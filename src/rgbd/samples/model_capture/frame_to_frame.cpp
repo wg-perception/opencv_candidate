@@ -11,7 +11,7 @@ float computeInliersRatio(const Ptr<OdometryFrameCache>& srcFrame,
                           const Ptr<OdometryFrameCache>& dstFrame,
                           const Mat& Rt, const Mat& cameraMatrix)
 {
-    const int maxColorDiff = 30; // it's rough now, because first and last frame may have large changes of light conditions
+    const int maxColorDiff = 50; // it's rough now, because first and last frame may have large changes of light conditions
                                  // TODO: do something with light changes
     const float maxDepthDiff = 0.01; // meters
 
@@ -45,6 +45,13 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
                          vector<Ptr<OdometryFrameCache> >& keyframes, vector<Mat>& keyframePoses,
                          vector<int>* keyframeIndices)
 {
+    const float minInliersRatio = 0.6f;
+    const float skippedTranslation = 0.4f; // meters
+    const float minTranslationDiff = 0.05f; // meters
+    const float maxTranslationDiff = 0.30f; // meters
+    const float minRotationDiff = 5.f; // degrees
+    const float maxRotationDiff = 30.f;// degrees
+
     CV_Assert(!frames.empty());
 
     keyframes.clear();
@@ -96,7 +103,8 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
 
             Mat Rt;
             cout << "odometry " << i << " -> " << prevFrameIndex << endl;
-            if(!odometry->compute(*currFrame, *prevFrame, Rt))
+            if(!odometry->compute(*currFrame, *prevFrame, Rt) ||
+               computeInliersRatio(currFrame, prevFrame, Rt, cameraMatrix) < minInliersRatio)
             {
                 frameToFramePoses.push_back(Mat());
                 cout << "Warning: Bad odometry " << i << "->" << prevFrameIndex << endl;
@@ -144,17 +152,9 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
         if(frameToFramePoses[i].empty())
             continue;
 
-        Ptr<OdometryFrameCache> lastKeyframe = *keyframes.rbegin();
         Ptr<OdometryFrameCache> currFrame = frames[i];
 
         bool isKeyframeAdded = false;
-
-        const float minInliersRatio = 0.7f;
-        const float skippedTranslation = 0.4f; // meters
-        const float minTranslationDiff = 0.05f; // meters
-        const float maxTranslationDiff = 0.30f; // meters
-        const float minRotationDiff = 5.f; // degrees
-        const float maxRotationDiff = 30.f;// degrees
 
         // check for the current frame: is it keyframe?
         {
@@ -170,8 +170,7 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
                 return false;
             }
 
-            if((tnorm > minTranslationDiff || rnorm > minRotationDiff) &&
-               computeInliersRatio(currFrame, lastKeyframe, Rt, cameraMatrix) > minInliersRatio)
+            if((tnorm >= minTranslationDiff || rnorm >= minRotationDiff)) // we don't check inliers ratio here because it was done by frame-to-frame above
             {
                 keyframes.push_back(currFrame);
                 keyframePoses.push_back(frameToFramePoses[i]);
@@ -191,6 +190,7 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
             Mat Rt;
             if(odometry->compute(*currFrame, *firstFrame, Rt))
             {
+                // we check inliers ratio for the loop closure frames because we didn't do this before
                 float inliersRatio = computeInliersRatio(currFrame, firstFrame, Rt, cameraMatrix);
                 if(inliersRatio > minInliersRatio)
                 {
