@@ -18,27 +18,150 @@
 #include "g2o/types/icp/types_icp.h"
 
 #include "opencv2/core/eigen.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
 
 using namespace std;
 using namespace cv;
 
-//class EdgeRGBDOdom
-//{
-//    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+const double sobelScale = 1./8.;
+const double grayNormalScale = 1./255.;
 
-//    public:
-//    // point positions
-//    Vector3d pos0, pos1;
+static inline
+Eigen::Matrix<double, 2, 3> create_dPdG(const Mat& K, const Eigen::Vector3d& G)
+{
+    Eigen::Matrix<double, 2, 3> dPdG;
+    double z_inv = 1. / G[2];
 
-//    // unit normals
-//    Mat *img0, img1;
+    dPdG(0,0) = K.at<double>(0,0) * z_inv;
+    dPdG(0,1) = 0.;
+    dPdG(0,2) = -dPdG(0,0) * G[0] * z_inv;
 
-//    EdgeRGBDOdom()
-//    {
-//        pos0.setZero();
-//        pos1.setZero();
-//    }
-//}
+    dPdG(1,0) = 0.;
+    dPdG(1,1) = K.at<double>(1,1) * z_inv;
+    dPdG(1,2) = -dPdG(1,1) * G[1] * z_inv;
+
+    return dPdG;
+}
+
+namespace g2o {
+
+    class EdgeRGBD
+    {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    public:
+        uchar srcColor, dstColor;
+        short int dst_dIdx, dst_dIdy;
+        Vector3d srcP3d;
+        Mat const* K;
+
+        EdgeRGBD() : srcColor(0), dstColor(0), dst_dIdx(0), dst_dIdy(0), K(0)
+        {}
+    };
+
+    class Edge_V_V_RGBD : public  BaseBinaryEdge<1, EdgeRGBD, VertexSE3, VertexSE3>
+    {
+    public:
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+        Edge_V_V_RGBD() {}
+        Edge_V_V_RGBD(const Edge_V_V_RGBD* e)
+          : BaseBinaryEdge<1, EdgeRGBD, VertexSE3, VertexSE3>()
+        {
+            _vertices[0] = const_cast<HyperGraph::Vertex*> (e->vertex(0));
+            _vertices[1] = const_cast<HyperGraph::Vertex*> (e->vertex(1));
+
+            _measurement.srcColor = e->measurement().srcColor;
+            _measurement.dstColor = e->measurement().dstColor;
+
+            _measurement.dst_dIdx = e->measurement().dst_dIdx;
+            _measurement.dst_dIdy = e->measurement().dst_dIdy;
+
+            _measurement.srcP3d = e->measurement().srcP3d;
+
+            _measurement.K = e->measurement().K;
+        }
+
+      // I/O functions
+      virtual bool read(std::istream& /*is*/) {return false;}
+      virtual bool write(std::ostream& /*os*/) const {return false;}
+
+      // return the error estimate as a 3-vector
+      void computeError()
+      {
+          double w = grayNormalScale;
+          double err = w * ((static_cast<double>(measurement().dstColor) -
+                             static_cast<double>(measurement().srcColor)));
+
+          _error.data()[0] = err;
+      }
+
+      virtual void linearizeOplus()
+      {
+          const VertexSE3 *src_vp = static_cast<const VertexSE3*>(_vertices[0]);
+          const VertexSE3 *dst_vp = static_cast<const VertexSE3*>(_vertices[1]);
+
+          Vector3d dstP3d = dst_vp->estimate().inverse() * src_vp->estimate() * measurement().srcP3d;
+
+          double w = grayNormalScale * sobelScale;
+
+          const EdgeRGBD& meas = measurement();
+          Matrix<double, 1, 2> dst_dIdP;
+          dst_dIdP(0,0) = w * static_cast<double>(meas.dst_dIdx);
+          dst_dIdP(0,1) = w * static_cast<double>(meas.dst_dIdy);
+
+          Matrix<double, 2, 3> dPdG = create_dPdG(*(meas.K), dstP3d);
+          if (!src_vp->fixed())
+          {
+              Matrix3d Rsrc2dst = dst_vp->estimate().matrix().topLeftCorner<3,3>().transpose() *
+                                    src_vp->estimate().matrix().topLeftCorner<3,3>();
+              Matrix<double, 3, 6> dGdT;
+              dGdT.block<3,3>(0,0) = Rsrc2dst;
+              dGdT.block<3,1>(0,3) = Rsrc2dst * dRidx.transpose() * meas.srcP3d;
+              dGdT.block<3,1>(0,4) = Rsrc2dst * dRidy.transpose() * meas.srcP3d;
+              dGdT.block<3,1>(0,5) = Rsrc2dst * dRidz.transpose() * meas.srcP3d;
+              _jacobianOplusXi = dst_dIdP * dPdG * dGdT;
+          }
+
+          if (!dst_vp->fixed())
+          {
+              Matrix<double, 3, 6> dGdT;
+              dGdT.block<3,3>(0,0) = -Matrix3d::Identity();
+              dGdT.block<3,1>(0,3) = dRidx * dstP3d;
+              dGdT.block<3,1>(0,4) = dRidy * dstP3d;
+              dGdT.block<3,1>(0,5) = dRidz * dstP3d;
+              _jacobianOplusXj = dst_dIdP * dPdG * dGdT;
+          }
+        }
+      static Matrix3d dRidx;
+      static Matrix3d dRidy;
+      static Matrix3d dRidz; // differential quat matrices
+
+
+      static void initializeStaticMatrices()
+      {
+          //if(dRidx.data() == 0)
+          {
+              dRidx << 0.0,0.0,0.0,
+                0.0,0.0,2.0,
+                0.0,-2.0,0.0;
+              dRidy  << 0.0,0.0,-2.0,
+                0.0,0.0,0.0,
+                2.0,0.0,0.0;
+              dRidz  << 0.0,2.0,0.0,
+                -2.0,0.0,0.0,
+                0.0,0.0,0.0;
+          }
+      }
+    };
+
+    Matrix3d Edge_V_V_RGBD::dRidx; // differential quat matrices
+    Matrix3d Edge_V_V_RGBD::dRidy; // differential quat matrices
+    Matrix3d Edge_V_V_RGBD::dRidz; // differential quat matrices
+
+
+    G2O_REGISTER_TYPE(Edge_V_V_RGBD, Edge_V_V_RGBD);
+}
+
 //---------------------------------------------------------------------------------------------------------
 // TODO: add a check of normals
 // this function is from *Odometry implementation
@@ -136,10 +259,12 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
     return correspCount;
 }
 
-void fillGraphICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
-                     const std::vector<cv::Mat>& poses, const Mat& cameraMatrix,
+void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
+                     const std::vector<cv::Mat>& poses, const Mat& cameraMatrix_64F,
                      int startVertexIndex, bool addVertices)
 {
+    g2o::Edge_V_V_RGBD::initializeStaticMatrices(); // TODO: make this more correctly
+
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
     const double maxDepthDiff = 0.01;
@@ -151,10 +276,6 @@ void fillGraphICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<
         *posesExt.rbegin() = (*poses.begin()).inv(DECOMP_SVD) * (*poses.rbegin());
         fillGraphSE3(optimizer, posesExt, startVertexIndex, addVertices);
     }
-
-    Mat cameraMatrix_64F, cameraMatrix_inv_64F;
-    cameraMatrix.convertTo(cameraMatrix_64F, CV_64FC1);
-    cameraMatrix_inv_64F = cameraMatrix_64F.inv();
 
     // set up ICP edges
     for(size_t currFrameIdx = 0; currFrameIdx < frames.size(); currFrameIdx++)
@@ -174,61 +295,129 @@ void fillGraphICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<
             if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                 continue;
 
-            Mat corresps;
-            int correspsCount = computeCorresps(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
+            Mat corresps_icp;
+            CV_Assert(!frames[currFrameIdx]->pyramidMask.empty());
+            CV_Assert(!frames[prevFrameIdx]->pyramidNormalsMask.empty());
+            CV_Assert(!frames[prevFrameIdx]->pyramidTexturedMask.empty());
+            int correspsCount_icp = computeCorresps(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
                                                 frames[currFrameIdx]->depth,
-                                                frames[currFrameIdx]->mask,
+                                                frames[currFrameIdx]->pyramidMask[0],
                                                 frames[prevFrameIdx]->depth,
                                                 frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                maxDepthDiff, corresps);
+                                                //frames[prevFrameIdx]->pyramidTexturedMask[0],
+                                                maxDepthDiff, corresps_icp);
+#define WITH_RGBD 1
+#if WITH_RGBD
+            const double rgbdScale = 1./(255 * std::max(cameraMatrix_64F.at<double>(0,0), cameraMatrix_64F.at<double>(1,1)));
 
-            cout << currFrameIdx << " -> " << prevFrameIdx << ": correspondences count " << correspsCount << endl;
-            if(correspsCount <= 0)
-                continue;
+            Mat corresps_rgbd;
+            int correspsCount_rgbd = computeCorresps(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
+                                                frames[currFrameIdx]->depth,
+                                                frames[currFrameIdx]->pyramidMask[0],
+                                                frames[prevFrameIdx]->depth,
+                                                //frames[prevFrameIdx]->pyramidNormalsMask[0],
+                                                frames[prevFrameIdx]->pyramidTexturedMask[0],
+                                                maxDepthDiff, corresps_rgbd);
+#endif
+
+            cout << currFrameIdx << " -> " << prevFrameIdx << ": icp correspondences count " << correspsCount_icp << endl;
+
+#if WITH_RGBD
+            cout << currFrameIdx << " -> " << prevFrameIdx << ": rgbd correspondences count " << correspsCount_rgbd << endl;
+#endif
 
             // edges for poses
-            for(int v0 = 0; v0 < corresps.rows; v0++)
+            for(int v0 = 0; v0 < corresps_icp.rows; v0++)
             {
-                for(int u0 = 0; u0 < corresps.cols; u0++)
+                for(int u0 = 0; u0 < corresps_icp.cols; u0++)
                 {
-                    int c = corresps.at<int>(v0, u0);
+                    int c = corresps_icp.at<int>(v0, u0);
                     if(c == -1)
                         continue;
 
                     int u1, v1;
                     get2shorts(c, u1, v1);
 
-                    g2o::Edge_V_V_GICP * e = new g2o::Edge_V_V_GICP();
-                    e->setVertex(0, optimizer->vertex(startVertexIndex + prevFrameIdx));
-                    e->setVertex(1, optimizer->vertex(startVertexIndex + currFrameIdx));
+                    {
+                        g2o::Edge_V_V_GICP * e = new g2o::Edge_V_V_GICP();
+                        e->setVertex(0, optimizer->vertex(startVertexIndex + prevFrameIdx));
+                        e->setVertex(1, optimizer->vertex(startVertexIndex + currFrameIdx));
 
-                    g2o::EdgeGICP meas;
-                    meas.pos0 = cvtPoint_ocv2egn(prevCloud.at<Point3f>(v1,u1));
-                    meas.pos1 = cvtPoint_ocv2egn(curCloud.at<Point3f>(v0,u0));
-                    meas.normal0 = cvtPoint_ocv2egn(prevNormals.at<Point3f>(v1,u1));
-                    meas.normal1 = cvtPoint_ocv2egn(curNormals.at<Point3f>(v0,u0));
+                        g2o::EdgeGICP meas;
+                        meas.pos0 = cvtPoint_ocv2egn(prevCloud.at<Point3f>(v1,u1));
+                        meas.pos1 = cvtPoint_ocv2egn(curCloud.at<Point3f>(v0,u0));
+                        meas.normal0 = cvtPoint_ocv2egn(prevNormals.at<Point3f>(v1,u1));
+                        meas.normal1 = cvtPoint_ocv2egn(curNormals.at<Point3f>(v0,u0));
 
-                    e->setMeasurement(meas);
-                    meas = e->measurement();
-                    e->information() = meas.prec0(0.01);
+                        e->setMeasurement(meas);
+                        meas = e->measurement();
+                        e->information() = meas.prec0(0.01);
 
-                    optimizer->addEdge(e);
+                        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+                        e->setRobustKernel(rk);
+
+                        optimizer->addEdge(e);
+
+                    }
                 }
             }
+#if WITH_RGBD
+            for(int v0 = 0; v0 < corresps_rgbd.rows; v0++)
+            {
+                for(int u0 = 0; u0 < corresps_rgbd.cols; u0++)
+                {
+                    int c = corresps_rgbd.at<int>(v0, u0);
+                    if(c == -1)
+                        continue;
+
+                    int u1, v1;
+                    get2shorts(c, u1, v1);
+
+                    {
+                        int srcIdx = currFrameIdx;
+                        int dstIdx = prevFrameIdx;
+                        int pyramidIdx = 0;
+                        g2o::Edge_V_V_RGBD * e = new g2o::Edge_V_V_RGBD();
+                        e->setVertex(0, optimizer->vertex(srcIdx));
+                        e->setVertex(1, optimizer->vertex(dstIdx));
+
+                        g2o::EdgeRGBD meas;
+                        meas.srcColor = frames[srcIdx]->pyramidImage[pyramidIdx].at<uchar>(v0, u0);
+                        meas.dstColor = frames[dstIdx]->pyramidImage[pyramidIdx].at<uchar>(v1, u1);
+
+                        meas.dst_dIdx = frames[dstIdx]->pyramid_dI_dx[pyramidIdx].at<short int>(v1, u1);
+                        meas.dst_dIdy = frames[dstIdx]->pyramid_dI_dy[pyramidIdx].at<short int>(v1, u1);
+
+                        meas.srcP3d = cvtPoint_ocv2egn(frames[srcIdx]->pyramidCloud[pyramidIdx].at<Point3f>(v0, u0));
+
+                        meas.K = &cameraMatrix_64F;
+
+                        e->setMeasurement(meas);
+                        meas = e->measurement();
+                        double w = rgbdScale * static_cast<double>(correspsCount_icp) / correspsCount_rgbd;
+                        e->information() = Eigen::Matrix<double,1,1>::Identity() * w;
+
+                        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+                        e->setRobustKernel(rk);
+
+                        optimizer->addEdge(e);
+                    }
+                }
+            }
+#endif
         }
     }
 }
 
-
-void refineICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
+void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
                        const cv::Mat& cameraMatrix, float pointsPart,
                        std::vector<cv::Mat>& refinedPoses)
 {
     const int iterCount = 5;
 
     // TODO: find corresp to main API?
-    // TODO: icp with one level here
-    ICPOdometry icp;
+    // TODO: odom with one level here
+    RgbdICPOdometry icp;
     icp.set("cameraMatrix", cameraMatrix);
     icp.set("pointsPart", pointsPart);
     for(size_t i = 0; i < frames.size(); i++)
@@ -238,6 +427,9 @@ void refineICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, co
     for(size_t i = 0; i < poses.size(); i++)
         refinedPoses[i] = poses[i].clone();
 
+    Mat cameraMatrix_64F;
+    cameraMatrix.convertTo(cameraMatrix_64F, CV_64FC1);
+
     for(int iter = 0; iter < iterCount; iter++)
     {
         G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
@@ -245,7 +437,7 @@ void refineICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, co
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphICPSE3(optimizer, frames, refinedPoses, cameraMatrix, 0, true);
+        fillGraphRgbdICPSE3(optimizer, frames, refinedPoses, cameraMatrix_64F, 0, true);
 
         optimizer->initializeOptimization();
         optimizer->optimize(1);

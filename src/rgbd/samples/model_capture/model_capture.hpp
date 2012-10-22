@@ -102,22 +102,18 @@ void refineSE3Poses(const std::vector<cv::Mat>& poses, std::vector<cv::Mat>& ref
 
 
 
-// Grap with 2 types of edges: frame-to-frame odometry and ICP for correspondences.
+// Grap with 2 types of edges: frame-to-frame odometry and Rgbd+ICP for correspondences.
 // poses.size() == frames.size()
-void fillGraphICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
+void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
                      const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix,
                      int startVertexIndex, bool addVertices=true);
 
 // Refine camera poses by graph with odometry edges + icp edges
 // poses.size() == frames.size()
 // refinedPoses.size() == poses.size()
-void refineICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix, float pointsPart,
+void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix, float pointsPart,
                        std::vector<cv::Mat>& refinedPoses);
 
-
-//void fillGraphICPSE3Landmarks(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
-//                              const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix,
-//                              int startVertexIndex, bool addVertices=true);
 
 void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix,
                            std::vector<cv::Mat>& refinedPoses);

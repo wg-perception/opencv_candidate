@@ -51,11 +51,10 @@ namespace g2o {
       static Matrix3d dRidx;
       static Matrix3d dRidy;
       static Matrix3d dRidz;
-      static bool isStaticMatInitialized;
 
       static void initializeStaticMatrices()
       {
-          if(dRidx.data() == 0)
+          //if(dRidx.data() == 0)
           {
               dRidx << 0.0,0.0,0.0,
                 0.0,0.0,2.0,
@@ -117,6 +116,56 @@ namespace g2o {
     }
 }
 
+static
+void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
+                            const Mat& depth0, const Mat& validMask0,
+                            const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
+                            Mat& corresps,
+                            const Mat& normals0, const Mat& transformedNormals1,
+                            const Mat& image0, const Mat& image1)
+{
+    const double maxNormalsDiff = 30; // in degrees
+    const double maxColorDiff = 50;
+    const double maxNormalAngleDev = 75; // in degrees
+
+    computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
+                    maxDepthDiff, corresps);
+
+    const Point3f Oz_inv(0,0,-1);
+    for(int v0 = 0; v0 < corresps.rows; v0++)
+    {
+        for(int u0 = 0; u0 < corresps.cols; u0++)
+        {
+            int c = corresps.at<int>(v0, u0);
+            if(c != -1)
+            {
+                Point3f curNormal = normals0.at<Point3f>(v0,u0);
+                if(std::abs(curNormal.ddot(Oz_inv)) < std::cos(maxNormalAngleDev / 180 * CV_PI))
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+
+                int u1, v1;
+                get2shorts(c, u1, v1);
+
+                Point3f transfPrevNormal = transformedNormals1.at<Point3f>(v1,u1);
+                if(std::abs(curNormal.ddot(transfPrevNormal)) < std::cos(maxNormalsDiff / 180 * CV_PI))
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+
+                if(std::abs(image0.at<uchar>(v0,u0) - image1.at<uchar>(v1,u1)) > maxColorDiff)
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
 void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix,
                            std::vector<cv::Mat>& refinedPoses)
 {
@@ -129,13 +178,13 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     refinedPoses.resize(poses.size());
     std::copy(poses.begin(), poses.end(), refinedPoses.begin());
 
-    ICPOdometry icp;
-    icp.set("cameraMatrix", cameraMatrix);
-    icp.set("pointsPart", 1.);
+    RgbdICPOdometry odom;
+    odom.set("cameraMatrix", cameraMatrix);
+    odom.set("pointsPart", 1.);
 
     const double maxDepthDiff = 0.002;
     for(size_t i = 0; i < frames.size(); i++)
-        icp.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+        odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
 
     const int iterCount = 3;//7
     const int minCorrespCount = 3;
@@ -149,7 +198,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphICPSE3(optimizer, frames, refinedPoses, cameraMatrix, 0);
+        fillGraphRgbdICPSE3(optimizer, frames, refinedPoses, cameraMatrix_64F, 0);
 
         vector<Mat> vertexIndices(frames.size());
         int vertexIdx = optimizer->vertices().size();
@@ -173,15 +222,21 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
+                Mat transformedPrevNormals;
+                perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
+                                     curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
-                int correspsCount = computeCorresps(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                                    frames[curFrameIdx]->depth,
-                                                    frames[curFrameIdx]->mask,
-                                                    frames[prevFrameIdx]->depth,
-                                                    frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                    maxDepthDiff, corresps);
-                if(correspsCount == 0)
-                    continue;
+                computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
+                                        frames[curFrameIdx]->depth,
+                                        frames[curFrameIdx]->mask,
+                                        frames[prevFrameIdx]->depth,
+                                        frames[prevFrameIdx]->pyramidNormalsMask[0],
+                                        maxDepthDiff, corresps,
+                                        frames[curFrameIdx]->pyramidNormals[0],
+                                        transformedPrevNormals,
+                                        frames[curFrameIdx]->image,
+                                        frames[prevFrameIdx]->image);
+
                 for(int v0 = 0; v0 < corresps.rows; v0++)
                 {
                     for(int u0 = 0; u0 < corresps.cols; u0++)
@@ -205,17 +260,22 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
+                Mat transformedPrevNormals;
+                perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
+                                     curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
-                int correspsCount = computeCorresps(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                                    frames[curFrameIdx]->depth,
-                                                    frames[curFrameIdx]->mask,
-                                                    frames[prevFrameIdx]->depth,
-                                                    frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                    maxDepthDiff, corresps);
-                if(correspsCount == 0) // magic number
-                    continue;
+                computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
+                                        frames[curFrameIdx]->depth,
+                                        frames[curFrameIdx]->mask,
+                                        frames[prevFrameIdx]->depth,
+                                        frames[prevFrameIdx]->pyramidNormalsMask[0],
+                                        maxDepthDiff, corresps,
+                                        frames[curFrameIdx]->pyramidNormals[0],
+                                        transformedPrevNormals,
+                                        frames[curFrameIdx]->image,
+                                        frames[prevFrameIdx]->image);
 
-                std::cout << "refineICPSE3Landmarks iter " << iter << "; cur " << curFrameIdx << "; prev " << prevFrameIdx << "; corresps " << correspsCount << std::endl;
+                std::cout << "refineICPSE3Landmarks iter " << iter << "; cur " << curFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
 
                 // poses and edges for points3d
                 for(int v0 = 0; v0 < corresps.rows; v0++)
@@ -241,12 +301,16 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                                 if(rect.contains(Point(u1, v1)) && !cvIsNaN(prevCloud.at<Point3f>(v1,u1).x) &&
                                    std::abs(prevCloud.at<Point3f>(v1,u1).z - prevCloud.at<Point3f>(v1_,u1_).z) < maxDepthDiff)
                                 {
-                                    Eigen::Vector3d pt_prev, pt_cur, norm_prev, norm_cur;
+                                    Eigen::Vector3d pt_prev, pt_cur, norm_prev, norm_cur, global_norm_prev;
                                     {
                                         pt_prev = cvtPoint_ocv2egn(prevCloud.at<Point3f>(v1,u1));
                                         norm_prev = cvtPoint_ocv2egn(prevNormals.at<Point3f>(v1,u1));
 
                                         vector<Point3f> tp;
+                                        perspectiveTransform(vector<Point3f>(1, prevNormals.at<Point3f>(v1,u1)),
+                                                             tp, refinedPoses[prevFrameIdx]);
+                                        global_norm_prev = cvtPoint_ocv2egn(tp[0]);
+
                                         perspectiveTransform(vector<Point3f>(1, curCloud.at<Point3f>(v0,u0)),
                                                              tp, refinedPoses[curFrameIdx]);
                                         pt_cur = cvtPoint_ocv2egn(tp[0]);
@@ -282,11 +346,14 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
 
                                     e->setMeasurement(meas);
                                     meas = e->measurement();
-                                    e->information() = meas.prec0(0.01);
+
+//                                    e->information() = meas.prec0(0.01);
+                                    meas.normal1 = global_norm_prev; // to get global covariation
+                                    e->information() = 0.001 * (meas.cov0(1.).inverse() + meas.cov1(1.).inverse());
+                                    meas.normal1 = norm_prev; // set local normal
 
                                     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                                     e->setRobustKernel(rk);
-
 
                                     optimizer->addEdge(e);
                                 }
@@ -338,7 +405,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
             frames[i]->pyramidNormals.clear();
             frames[i]->pyramidCloud.clear();
             frames[i]->pyramidNormalsMask.clear();
-            icp.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+            odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
         }
 
         optimizer->clear();
@@ -356,15 +423,21 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                 continue;
 
             Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[curFrameIdx];
+            Mat transformedPrevNormals;
+            perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
+                                 curToPrevRt.inv(DECOMP_SVD));
             Mat corresps;
-            int correspsCount = computeCorresps(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                                frames[curFrameIdx]->depth,
-                                                frames[curFrameIdx]->mask,
-                                                frames[prevFrameIdx]->depth,
-                                                frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                maxDepthDiff, corresps);
-            if(correspsCount == 0)
-                continue;
+            computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
+                                    frames[curFrameIdx]->depth,
+                                    frames[curFrameIdx]->mask,
+                                    frames[prevFrameIdx]->depth,
+                                    frames[prevFrameIdx]->pyramidNormalsMask[0],
+                                    maxDepthDiff, corresps,
+                                    frames[curFrameIdx]->pyramidNormals[0],
+                                    transformedPrevNormals,
+                                    frames[curFrameIdx]->image,
+                                    frames[prevFrameIdx]->image);
+
             for(int v0 = 0; v0 < corresps.rows; v0++)
             {
                 for(int u0 = 0; u0 < corresps.cols; u0++)

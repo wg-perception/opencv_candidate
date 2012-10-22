@@ -42,13 +42,18 @@ int main(int argc, char** argv)
 
     // Fill vector of initial frames
     vector<Ptr<OdometryFrameCache> > frames;
-    vector<Mat> tableMasks;
+    vector<Mat> tableMasks, tableWithObjectMasks;
     for(size_t i = 0; i < bgrImages.size(); i++)
     {
         Ptr<OdometryFrameCache> frame = new OdometryFrameCache();
 
         Mat gray;
         cvtColor(bgrImages[i], gray, CV_BGR2GRAY);
+        {
+            Mat tmp;
+            medianBlur(gray, tmp, 3);
+            gray = tmp;
+        }
 
         Mat cloud;
         depthTo3d(depthes[i], cameraMatrix, cloud);
@@ -71,7 +76,8 @@ int main(int argc, char** argv)
         }
 
         frames.push_back(frame);
-        tableMasks.push_back(tableMask);
+        tableMasks.push_back(tableMask.clone());
+        tableWithObjectMasks.push_back(tableWithObjectMask.clone());
     }
 
     vector<Ptr<OdometryFrameCache> > keyframes;
@@ -81,38 +87,43 @@ int main(int argc, char** argv)
         return -1;
 
     cout << "Frame-to-frame odometry result" << endl;
-    //showModel(bgrImages, indicesToBgrImages, keyframes, keyframePoses, cameraMatrix, 0.005);
+    showModel(bgrImages, indicesToBgrImages, keyframes, keyframePoses, cameraMatrix, 0.005);
 
     vector<Mat> refinedPosesSE3;
     refineSE3Poses(keyframePoses, refinedPosesSE3);
 
     cout << "Result of the loop closure" << endl;
-    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesSE3, cameraMatrix, 0.005);
+    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesSE3, cameraMatrix, 0.003);
 
-    float pointsPart = 0.1f;
-    float modelVoxelSize = 0.005;
+    vector<Mat> refinedPosesICPSE3;
+    float pointsPart = 0.05f;
+    refineRgbdICPSE3Poses(keyframes, refinedPosesSE3, cameraMatrix, pointsPart, refinedPosesICPSE3);
+
+    cout << "Result of RgbdICP for camera poses" << endl;
+    float modelVoxelSize = 0.003f;
+    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesICPSE3, cameraMatrix, modelVoxelSize);
+
 #if 1
     // remove table from the further refinement
     for(size_t i = 0; i < keyframes.size(); i++)
     {
-        keyframes[i]->mask.setTo(Scalar(0), tableMasks[indicesToBgrImages[i]]);
+        keyframes[i]->mask = tableWithObjectMasks[indicesToBgrImages[i]] & ~tableMasks[indicesToBgrImages[i]];
+        keyframes[i]->pyramidMask.clear();
+        keyframes[i]->pyramidTexturedMask.clear();
+        keyframes[i]->pyramidNormalsMask.clear();
         keyframes[i]->pyramidMask.clear();
     }
     pointsPart = 1.f;
-    modelVoxelSize = 0.000005;
+    modelVoxelSize = 0.001;
 #endif
-
-    vector<Mat> refinedPosesICPSE3;
-    refineICPSE3Poses(keyframes, refinedPosesSE3, cameraMatrix, pointsPart, refinedPosesICPSE3);
-
-    cout << "Result of ICP for camera poses" << endl;
-    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesICPSE3, cameraMatrix, modelVoxelSize);
 
     vector<Mat> refinedPosesICPSE3Landmarks;
     refineICPSE3Landmarks(keyframes, refinedPosesICPSE3, cameraMatrix, refinedPosesICPSE3Landmarks);
 
-    cout << "Result of ICP for camera poses and model points" << endl;
-    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesICPSE3, cameraMatrix, modelVoxelSize);
+    cout << "Result of RgbdICP for camera poses and moving the model points" << endl;
+    modelVoxelSize = 0.000001;
+    showModel(bgrImages, indicesToBgrImages, keyframes, refinedPosesICPSE3Landmarks, cameraMatrix, modelVoxelSize);
+//    showModelWithNormals(bgrImages, indicesToBgrImages, keyframes, refinedPosesICPSE3Landmarks, cameraMatrix);
 
     return 0;
 }
