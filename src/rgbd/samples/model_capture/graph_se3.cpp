@@ -138,7 +138,9 @@ void refineSE3Poses(const vector<Mat>& poses, vector<Mat>& refinedPoses)
     fillGraphSE3(optimizer, poses, 0, true);
 
     optimizer->initializeOptimization();
-    optimizer->optimize(5);
+    const int optIterCount = 5;
+    if(optimizer->optimize(optIterCount) != optIterCount)
+        CV_Error(CV_StsError, "Cann't do given count of iterations\n");
 
     getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
 

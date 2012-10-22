@@ -370,7 +370,12 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         cout << "Edges count " << optimizer->edges().size() << endl;
 
         optimizer->initializeOptimization();
-        optimizer->optimize(1);
+        const int optIterCount = 1;
+        if(optimizer->optimize(optIterCount) != optIterCount)
+        {
+            optimizer->clear();
+            break;
+        }
 
         getSE3Poses(optimizer, Range(0, posesVertexCount), refinedPoses);
 

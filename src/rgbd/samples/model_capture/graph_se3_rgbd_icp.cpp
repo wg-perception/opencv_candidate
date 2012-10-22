@@ -440,7 +440,12 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         fillGraphRgbdICPSE3(optimizer, frames, refinedPoses, cameraMatrix_64F, 0, true);
 
         optimizer->initializeOptimization();
-        optimizer->optimize(1);
+        const int optIterCount = 1;
+        if(optimizer->optimize(optIterCount) != optIterCount)
+        {
+            optimizer->clear();
+            break;
+        }
 
         getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
 
