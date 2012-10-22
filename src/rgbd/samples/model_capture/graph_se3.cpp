@@ -1,5 +1,6 @@
 #include "model_capture.hpp"
 #include "create_optimizer.hpp"
+#include "ocv_pcl_eigen_convert.hpp"
 
 #include "g2o/types/slam3d/se3quat.h"
 #include "g2o/types/slam3d/vertex_se3.h"
@@ -91,6 +92,9 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer, const vector<Mat>& poses, int
             g2o_edge->setMeasurement(cv2G2O(odometryConstraint));
             g2o_edge->setInformation(informationMatrixSE3());
 
+            g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+            g2o_edge->setRobustKernel(rk);
+
             optimizer->addEdge(g2o_edge);
         }
     }
@@ -104,6 +108,10 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer, const vector<Mat>& poses, int
         Mat odometryConstraint = poses[0].inv(DECOMP_SVD) * *poses.rbegin();
         g2o_edge->setMeasurement(cv2G2O(odometryConstraint));
         g2o_edge->setInformation(informationMatrixSE3());
+
+        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+        g2o_edge->setRobustKernel(rk);
+
         optimizer->addEdge(g2o_edge);
     }
 }
@@ -115,19 +123,7 @@ void getSE3Poses(g2o::SparseOptimizer* optimizer, const Range& verticesRange, ve
     {
         g2o::VertexSE3* v = dynamic_cast<g2o::VertexSE3*>(optimizer->vertex(i));
         Eigen::Isometry3d pose = v->estimate();
-        Eigen::Matrix3d eigenRotation = pose.rotation();
-        Eigen::Matrix<double,3,1> eigenTranslation = pose.translation();
-
-        Mat R, t;
-        eigen2cv(eigenRotation, R);
-        eigen2cv(eigenTranslation, t);
-        t = t.reshape(1,3);
-
-        Mat Rt = Mat::eye(4,4,CV_64FC1);
-        R.copyTo(Rt(Rect(0,0,3,3)));
-        t.copyTo(Rt(Rect(3,0,1,3)));
-
-        poses[i] = Rt;
+        poses[i] = cvtIsometry_egn2ocv(pose);
     }
 }
 

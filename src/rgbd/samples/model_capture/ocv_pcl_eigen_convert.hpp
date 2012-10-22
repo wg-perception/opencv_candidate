@@ -5,6 +5,7 @@
 #include <pcl/point_cloud.h>
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/core/eigen.hpp>
 
 inline
 void cvtCloud_cv2pcl(const cv::Mat& ocvCloud, const cv::Mat& mask, pcl::PointCloud<pcl::PointXYZ>& pclCloud)
@@ -52,6 +53,24 @@ Eigen::Vector3d cvtPoint_ocv2egn(const cv::Point3f& ocv_p)
     egn_p[2] = ocv_p.z;
 
     return egn_p;
+}
+
+inline
+cv::Mat cvtIsometry_egn2ocv(const Eigen::Isometry3d& egn_o)
+{
+    Eigen::Matrix3d eigenRotation = egn_o.rotation();
+    Eigen::Matrix<double,3,1> eigenTranslation = egn_o.translation();
+
+    cv::Mat R, t;
+    eigen2cv(eigenRotation, R);
+    eigen2cv(eigenTranslation, t);
+    t = t.reshape(1,3);
+
+    cv::Mat ocv_o = cv::Mat::eye(4,4,CV_64FC1);
+    R.copyTo(ocv_o(cv::Rect(0,0,3,3)));
+    t.copyTo(ocv_o(cv::Rect(3,0,1,3)));
+
+    return ocv_o;
 }
 
 #endif
