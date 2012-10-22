@@ -8,6 +8,7 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/visualization/pcl_visualizer.h>
 
+#include <opencv2/highgui/highgui.hpp>
 using namespace std;
 using namespace cv;
 
@@ -102,6 +103,83 @@ void showModel(const vector<Mat>& bgrImages, const vector<int>& indicesInBgrImag
     viewer->addPointCloud<pcl::PointXYZRGB>(drawCloudPtr, rgb, "result");
     viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 0, "result");
     viewer->initCameraParameters ();
+    while (!viewer->wasStopped ())
+    {
+        viewer->spinOnce (100);
+        boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+    }
+}
+
+
+void showModelWithNormals(const vector<Mat>& bgrImages, const vector<int>& indicesInBgrImages,
+               const vector<Ptr<OdometryFrameCache> >& frames, const vector<Mat>& poses,
+               const Mat& cameraMatrix)
+{
+    pcl::PointCloud<pcl::PointXYZRGB> globalCloud;
+    pcl::PointCloud<pcl::Normal> globalNormals;
+
+    CV_Assert(indicesInBgrImages.empty() || indicesInBgrImages.size() == frames.size());
+    CV_Assert(frames.size() == poses.size() || (frames.size() + 1) == poses.size());
+
+    for(size_t i = 0; i < frames.size(); i++)
+    {
+        int bgrIdx = indicesInBgrImages.empty() ? i : indicesInBgrImages[i];
+        Mat cloud;
+        if(!frames[i]->pyramidCloud.empty())
+            cloud = frames[i]->pyramidCloud[0];
+        else
+            depthTo3d(frames[i]->depth, cameraMatrix, cloud);
+
+        vector<Point3f> transfPointCloud;
+        cv::perspectiveTransform(cloud.reshape(3,1), transfPointCloud, poses[i]);
+
+        vector<Point3f> transfNormals;
+        cv::perspectiveTransform(frames[i]->pyramidNormals[0].reshape(3,1), transfNormals, poses[i]);
+
+        Mat nrmls(transfNormals);
+        nrmls = nrmls.reshape(3, frames[i]->image.rows);
+        Mat mask = frames[i]->mask;
+        CV_Assert(mask.size() == nrmls.size());
+        for(int y = 0; y < mask.rows; y++)
+        {
+            for(int x = 0; x < mask.cols; x++)
+            {
+                const Point3f& p = nrmls.at<Point3f>(y,x);
+                CV_Assert(frames[i]->mask.type() == CV_8UC1);
+                if(mask.at<uchar>(y,x) && isValidDepth(frames[i]->depth.at<float>(y,x)))
+                {
+                    pcl::Normal normal;
+                    normal.normal_x = p.x;
+                    normal.normal_y = p.y;
+                    normal.normal_z = p.z;
+                    globalNormals.push_back(normal);
+                }
+            }
+        }
+
+        pcl::PointCloud<pcl::PointXYZ> addCloud;
+        cvtCloud_cv2pcl(Mat(transfPointCloud), Mat(), addCloud);
+
+        CV_Assert(addCloud.size() == frames[i]->image.total());
+        addCloud.width = frames[i]->image.cols;
+        addCloud.height = frames[i]->image.rows;
+        addToCloud(globalCloud, addCloud, frames[i]->mask, bgrImages[bgrIdx]);
+
+        cout << "Global cloud size " << globalCloud.size() << endl;
+        cout << "Global normal size " << globalNormals.size() << endl;
+    }
+
+    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr drawCloudPtr = boost::make_shared<const pcl::PointCloud<pcl::PointXYZRGB> >(globalCloud);
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer =
+            boost::shared_ptr<pcl::visualization::PCLVisualizer>(new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    viewer->setBackgroundColor (0, 0, 0);
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(drawCloudPtr);
+    viewer->addPointCloud<pcl::PointXYZRGB>(drawCloudPtr, rgb, "result");
+    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 0, "result"); //
+    pcl::PointCloud<pcl::Normal>::ConstPtr normalsPtr  = boost::make_shared<const pcl::PointCloud<pcl::Normal> >(globalNormals);
+    viewer->addPointCloudNormals<pcl::PointXYZRGB, pcl::Normal>(drawCloudPtr, normalsPtr, 20, 0.003, "normals");
+    viewer->initCameraParameters ();
+
     while (!viewer->wasStopped ())
     {
         viewer->spinOnce (100);

@@ -132,4 +132,9 @@ void showModel(const std::vector<cv::Mat>& bgrImages, const std::vector<int>& in
                const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
                const cv::Mat& cameraMatrix, float voxelFilterSize);
 
+void showModelWithNormals(const std::vector<cv::Mat>& bgrImages, const std::vector<int>& indicesInBgrImages,
+               const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
+               const cv::Mat& cameraMatrix);
+
+
 #endif // MODEL_CAPTURE_HPP
