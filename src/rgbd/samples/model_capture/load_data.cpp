@@ -1,6 +1,7 @@
 #include "model_capture.hpp"
 
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include <dirent.h>
 #include <fstream>
@@ -75,15 +76,16 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
                 fs["depth_image"] >> depth;
 #else
                 cout << "Bilateral iltering" << endl;
-                Mat depth;
                 fs["depth_image"] >> depth;
 
                 const double depth_sigma = 0.003;
                 const double space_sigma = 3.5;  // in pixels
                 Mat invalidDepthMask = (depth != depth) | (depth == 0.);
                 depth.setTo(-5*depth_sigma, invalidDepthMask);
-                bilateralFilter(depth, frame.depth, -1, depth_sigma, space_sigma);
-                frame.depth.setTo(std::numeric_limits<float>::quiet_NaN(), invalidDepthMask);
+                Mat filteredDepth;
+                bilateralFilter(depth, filteredDepth, -1, depth_sigma, space_sigma);
+                filteredDepth.setTo(std::numeric_limits<float>::quiet_NaN(), invalidDepthMask);
+                depth = filteredDepth;
 #endif
                 CV_Assert(!depth.empty());
                 CV_Assert(depth.type() == CV_32FC1);
