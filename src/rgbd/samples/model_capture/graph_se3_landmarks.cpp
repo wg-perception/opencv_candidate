@@ -364,13 +364,10 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
             }
         }
 
-
-        cout << "All vertices count " << optimizer->vertices().size() << endl;
-        cout << "Vertices of points " << vertexIdx - posesVertexCount << endl;
-        cout << "Edges count " << optimizer->edges().size() << endl;
-
         optimizer->initializeOptimization();
         const int optIterCount = 1;
+        cout << "Vertices count: " << optimizer->vertices().size() << endl;
+        cout << "Edges count: " << optimizer->edges().size() << endl;
         if(optimizer->optimize(optIterCount) != optIterCount)
         {
             optimizer->clear();

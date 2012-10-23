@@ -139,6 +139,8 @@ void refineSE3Poses(const vector<Mat>& poses, vector<Mat>& refinedPoses)
 
     optimizer->initializeOptimization();
     const int optIterCount = 5;
+    cout << "Vertices count: " << optimizer->vertices().size() << endl;
+    cout << "Edges count: " << optimizer->edges().size() << endl;
     if(optimizer->optimize(optIterCount) != optIterCount)
         CV_Error(CV_StsError, "Cann't do given count of iterations\n");
 

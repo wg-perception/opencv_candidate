@@ -441,6 +441,8 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
 
         optimizer->initializeOptimization();
         const int optIterCount = 1;
+        cout << "Vertices count: " << optimizer->vertices().size() << endl;
+        cout << "Edges count: " << optimizer->edges().size() << endl;
         if(optimizer->optimize(optIterCount) != optIterCount)
         {
             optimizer->clear();
