@@ -309,13 +309,16 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                                         vector<Point3f> tp;
                                         perspectiveTransform(vector<Point3f>(1, prevNormals.at<Point3f>(v1,u1)),
                                                              tp, refinedPoses[prevFrameIdx]);
+                                        CV_Assert(isValidDepth(tp[0].z));
                                         global_norm_prev = cvtPoint_ocv2egn(tp[0]);
 
                                         perspectiveTransform(vector<Point3f>(1, curCloud.at<Point3f>(v0,u0)),
                                                              tp, refinedPoses[curFrameIdx]);
+                                        CV_Assert(isValidDepth(tp[0].z));
                                         pt_cur = cvtPoint_ocv2egn(tp[0]);
                                         perspectiveTransform(vector<Point3f>(1, curNormals.at<Point3f>(v0,u0)),
                                                              tp, refinedPoses[curFrameIdx]);
+                                        CV_Assert(isValidDepth(tp[0].z));
                                         norm_cur = cvtPoint_ocv2egn(tp[0]);
                                     }
 
@@ -378,6 +381,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
 
         // update points poses
         cout << "Updating model points..." << endl;
+        CV_Assert(refinedPoses.size() ==  vertexIndices.size());
         for(size_t i = 0; i < vertexIndices.size(); i++)
         {
             const Mat& curVertexIndices = vertexIndices[i];
@@ -398,6 +402,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                     }
                     vector<Point3f> tp;
                     perspectiveTransform(vector<Point3f>(1, p), tp, refinedPoses[i].inv(DECOMP_SVD));
+                    CV_Assert(isValidDepth(tp[0].z));
                     depth.at<float>(y,x) = tp[0].z;
                 }
             }

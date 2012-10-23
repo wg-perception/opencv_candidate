@@ -3,6 +3,7 @@
 
 #include "g2o/core/block_solver.h"
 #include "g2o/solvers/cholmod/linear_solver_cholmod.h"
+#include "g2o/solvers/csparse/linear_solver_csparse.h"
 #include "g2o/core/optimization_algorithm_levenberg.h"
 #include "g2o/core/optimization_algorithm_gauss_newton.h"
 //#include "g2o/core/factory.h"
@@ -15,8 +16,10 @@
 typedef g2o::BlockSolver< g2o::BlockSolverTraits<6, 3> >  G2OBlockSolver;
 typedef g2o::LinearSolver< G2OBlockSolver::PoseMatrixType> G2OLinearSolver;
 typedef g2o::LinearSolverCholmod<G2OBlockSolver::PoseMatrixType> G2OLinearCholmodSolver;
+typedef g2o::LinearSolverCSparse<G2OBlockSolver::PoseMatrixType> G2OLinearCSparseSolver;
 
 const std::string DEFAULT_LINEAR_SOLVER_TYPE = "cholmod";
+//const std::string DEFAULT_LINEAR_SOLVER_TYPE = "csparse";
 const std::string DEFAULT_NON_LINEAR_SOLVER_TYPE  = "GN";
 
 inline
@@ -25,6 +28,10 @@ G2OLinearSolver* createLinearSolver(const std::string& type)
     G2OLinearSolver* solver = 0;
     if(type == "cholmod")
         solver = new G2OLinearCholmodSolver();
+    else if(type == "csparse")
+    {
+        solver = new G2OLinearCSparseSolver();
+    }
     else
     {
         CV_Assert(0);
