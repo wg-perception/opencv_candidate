@@ -1,0 +1,14 @@
+<stack>
+  <name>opencv_candidate</name>
+  <version>0.1.0</version>
+  <description>Experimental OpenCV functions</description>
+  <author email="erublee@willowgarage.com">Ethan Rublee</author>
+  <author email="vrabud@willowgarage.com">Vincent Rabaud</author>
+  <maintainer email="vrabaud@willowgarage.com">Vincent Rabaud</maintainer>
+  <license>BSD</license>
+  <copyright>Willow Garage</copyright>
+
+  <build_depends>catkin</build_depends>
+  <build_depends>opencv2</build_depends>
+  <depends>opencv2</depends>
+</stack>
