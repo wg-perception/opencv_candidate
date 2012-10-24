@@ -44,3 +44,48 @@ target_link_libraries(rgbd_tests ${OpenCV_LIBRARIES}
 )
 
 add_test(rgbd_tests rgbd_tests)
+
+# add the model capture app/library
+find_package(PCL REQUIRED COMPONENTS io filters visualization features segmentation surface)
+include_directories(${PCL_INCLUDE_DIRS})
+
+find_package(g2o)
+#set(g2o_INCLUDE_DIR "/home/mdim/work/g2o/install/include")
+#set(g2o_LIB_DIR "/home/mdim/work/g2o/install/lib")
+#set(g2o_SOURCE_DIR "/home/mdim/work/g2o/g2o")
+
+LIST(APPEND CMAKE_MODULE_PATH ${g2o_SOURCE_DIR}/cmake_modules)
+
+# Find Eigen3
+FIND_PACKAGE(Eigen)
+#FIND_PACKAGE(Cholmod)
+#FIND_PACKAGE(CSparse)
+
+include_directories(${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
+
+add_executable(model_capture samples/model_capture.cpp
+                             samples/model_capture/model_capture.hpp
+                             samples/model_capture/ocv_pcl_eigen_convert.hpp
+                             samples/model_capture/create_optimizer.hpp
+                             samples/model_capture/load_data.cpp
+                             samples/model_capture/mask_data.cpp
+                             samples/model_capture/frame_to_frame.cpp
+                             samples/model_capture/graph_se3.cpp
+                             samples/model_capture/graph_se3_rgbd_icp.cpp
+                             samples/model_capture/graph_se3_landmarks.cpp
+                             samples/model_capture/show_model.cpp
+              )
+
+target_link_libraries(model_capture ${OpenCV_LIBRARIES}
+                                    opencv_rgbd
+                                    ${PCL_LIBRARY_DIRS}/libpcl_filters.so
+                                    ${PCL_LIBRARY_DIRS}/libpcl_surface.so
+                                    ${PCL_LIBRARY_DIRS}/libpcl_segmentation.so
+                                    ${PCL_LIBRARY_DIRS}/libpcl_visualization.so
+                                    ${g2o_LIB_DIR}/libg2o_core.so
+                                    ${g2o_LIB_DIR}/libg2o_types_slam3d.so
+                                    ${g2o_LIB_DIR}/libg2o_types_icp.so
+                                    ${CHOLMOD_LIBRARIES}
+                                    ${CSPARSE_LIBRARY} ${g2o_LIB_DIR}/libg2o_csparse_extension.so)
+
+
