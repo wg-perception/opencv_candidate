@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     vector<Mat> tableMasks, tableWithObjectMasks;
     for(size_t i = 0; i < bgrImages.size(); i++)
     {
-        Ptr<OdometryFrameCache> frame = new OdometryFrameCache();
+        Ptr<OdometryFrameCache> frame;
 
         Mat gray;
         cvtColor(bgrImages[i], gray, CV_BGR2GRAY);
@@ -68,6 +68,7 @@ int main(int argc, char** argv)
         }
         else
         {
+            frame = new OdometryFrameCache();
             frame->image = gray;
             frame->depth = depthes[i];
             CV_Assert(!tableWithObjectMask.empty());
@@ -85,6 +86,17 @@ int main(int argc, char** argv)
     vector<int> indicesToBgrImages; // to frames vector
     if(!frameToFrameProcess(frames, cameraMatrix, odometry, keyframes, keyframePoses, &indicesToBgrImages))
         return -1;
+#if 1
+    for(size_t i = 0; i < frames.size(); i++)
+    {
+        if(find(indicesToBgrImages.begin(), indicesToBgrImages.end(), i) == indicesToBgrImages.end())
+        {
+            frames[i].release();
+            bgrImages[i].release();
+            depthes[i].release();
+        }
+    }
+#endif
 
     cout << "Frame-to-frame odometry result" << endl;
     showModel(bgrImages, indicesToBgrImages, keyframes, keyframePoses, cameraMatrix, 0.005);

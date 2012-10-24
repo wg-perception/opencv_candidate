@@ -179,8 +179,12 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     std::copy(poses.begin(), poses.end(), refinedPoses.begin());
 
     RgbdICPOdometry odom;
-    odom.set("cameraMatrix", cameraMatrix);
+    vector<float> minGradientMagnitudes(1,10);
+    vector<int> iterCounts(1,10);
     odom.set("pointsPart", 1.);
+    odom.set("minGradientMagnitudes", Mat(minGradientMagnitudes).clone());
+    odom.set("iterCounts", Mat(iterCounts).clone());
+    odom.set("cameraMatrix", cameraMatrix);
 
     const double maxDepthDiff = 0.002;
     for(size_t i = 0; i < frames.size(); i++)
@@ -407,6 +411,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                 }
             }
 
+            frames[i]->pyramidMask.clear();
             frames[i]->pyramidDepth.clear();
             frames[i]->normals.release();
             frames[i]->pyramidNormals.clear();

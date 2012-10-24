@@ -414,14 +414,18 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                        std::vector<cv::Mat>& refinedPoses)
 {
     const int iterCount = 5;
-
     // TODO: find corresp to main API?
     // TODO: odom with one level here
-    RgbdICPOdometry icp;
-    icp.set("cameraMatrix", cameraMatrix);
-    icp.set("pointsPart", pointsPart);
+    RgbdICPOdometry odom;
+    vector<float> minGradientMagnitudes(1,10);
+    vector<int> iterCounts(1,10);
+    odom.set("pointsPart", pointsPart);
+    odom.set("minGradientMagnitudes", Mat(minGradientMagnitudes).clone());
+    odom.set("iterCounts", Mat(iterCounts).clone());
+    odom.set("cameraMatrix", cameraMatrix);
+
     for(size_t i = 0; i < frames.size(); i++)
-        icp.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+        odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
 
     refinedPoses.resize(poses.size());
     for(size_t i = 0; i < poses.size(); i++)

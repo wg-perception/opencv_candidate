@@ -47,9 +47,11 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
 {
     const float minInliersRatio = 0.6f;
     const float skippedTranslation = 0.4f; // meters
-    const float minTranslationDiff = 0.05f; // meters
+    //const float minTranslationDiff = 0.05f; // meters
+    const float minTranslationDiff = 0.08f; // meters
     const float maxTranslationDiff = 0.30f; // meters
-    const float minRotationDiff = 5.f; // degrees
+    //const float minRotationDiff = 5.f; // degrees
+    const float minRotationDiff = 10.f; // degrees
     const float maxRotationDiff = 30.f;// degrees
 
     CV_Assert(!frames.empty());
