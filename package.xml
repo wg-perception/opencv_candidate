@@ -6,7 +6,6 @@
   <author email="vrabud@willowgarage.com">Vincent Rabaud</author>
   <maintainer email="vrabaud@willowgarage.com">Vincent Rabaud</maintainer>
   <license>BSD</license>
-  <copyright>Willow Garage</copyright>
 
   <url>http://ecto.willowgarage.com</url>
   <build_depend>catkin</build_depend>

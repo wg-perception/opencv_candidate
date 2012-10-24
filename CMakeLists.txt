@@ -21,6 +21,7 @@ find_package(OpenCV REQUIRED core imgproc highgui calib3d)
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV headers: ${OpenCV_INCLUDE_DIRS}")
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS})
+include_directories(include)
 
 # install the include directory
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
