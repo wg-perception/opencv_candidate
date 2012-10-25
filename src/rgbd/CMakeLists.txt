@@ -47,12 +47,9 @@ add_test(rgbd_tests rgbd_tests)
 
 # add the model capture app/library
 find_package(PCL REQUIRED COMPONENTS io filters visualization features segmentation surface)
-include_directories(${PCL_INCLUDE_DIRS})
-
-find_package(g2o)
-#set(g2o_INCLUDE_DIR "/home/mdim/work/g2o/install/include")
-#set(g2o_LIB_DIR "/home/mdim/work/g2o/install/lib")
-#set(g2o_SOURCE_DIR "/home/mdim/work/g2o/g2o")
+include_directories(SYSTEM ${PCL_INCLUDE_DIRS}
+                           /usr/include/suitesparse
+)
 
 LIST(APPEND CMAKE_MODULE_PATH ${g2o_SOURCE_DIR}/cmake_modules)
 
@@ -75,17 +72,15 @@ add_executable(model_capture samples/model_capture.cpp
                              samples/model_capture/graph_se3_landmarks.cpp
                              samples/model_capture/show_model.cpp
               )
-
+link_directories(/opt/ros/groovy/lib)
 target_link_libraries(model_capture ${OpenCV_LIBRARIES}
                                     opencv_rgbd
-                                    ${PCL_LIBRARY_DIRS}/libpcl_filters.so
-                                    ${PCL_LIBRARY_DIRS}/libpcl_surface.so
-                                    ${PCL_LIBRARY_DIRS}/libpcl_segmentation.so
-                                    ${PCL_LIBRARY_DIRS}/libpcl_visualization.so
-                                    ${g2o_LIB_DIR}/libg2o_core.so
-                                    ${g2o_LIB_DIR}/libg2o_types_slam3d.so
-                                    ${g2o_LIB_DIR}/libg2o_types_icp.so
+                                    ${PCL_LIBRARIES}
+                                    /opt/ros/groovy/lib/libg2o_core.so
+                                    /opt/ros/groovy/lib/libg2o_types_slam3d.so
+                                    /opt/ros/groovy/lib/libg2o_types_icp.so
+                                    /opt/ros/groovy/lib/libg2o_stuff.so
+                                    cholmod
+                                    cxsparse
                                     ${CHOLMOD_LIBRARIES}
-                                    ${CSPARSE_LIBRARY} ${g2o_LIB_DIR}/libg2o_csparse_extension.so)
-
-
+                                    ${CSPARSE_LIBRARY} /opt/ros/groovy/lib/libg2o_csparse_extension.so)
