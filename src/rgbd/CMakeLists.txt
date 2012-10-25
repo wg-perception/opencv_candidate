@@ -58,7 +58,7 @@ FIND_PACKAGE(Eigen)
 #FIND_PACKAGE(Cholmod)
 #FIND_PACKAGE(CSparse)
 
-include_directories(${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
+include_directories(/opt/ros/groovy/include ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
 
 add_executable(model_capture samples/model_capture.cpp
                              samples/model_capture/model_capture.hpp
