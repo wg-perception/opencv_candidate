@@ -10,6 +10,103 @@
 
 #include "g2o/core/sparse_optimizer.h"
 
+class TableMasker: public cv::Algorithm
+{
+public:
+    static double DEFAULT_Z_FILTER_MIN() {return 0.005;}
+    static double DEFAULT_Z_FILTER_MAX() {return 0.5;}
+    static double DEFAULT_MIN_TABLE_PART() {return 0.1;}
+
+    TableMasker();
+    bool operator()(const cv::Mat& cloud, const cv::Mat& normals,
+                    cv::Mat& tableWithObjectMask, cv::Mat* tableMask=0) const;
+
+    cv::AlgorithmInfo*
+    info() const;
+
+protected:
+    mutable cv::Ptr<cv::RgbdPlane> planeComputer;
+
+    double z_filter_min;
+    double z_filter_max;
+    double min_table_part;
+
+    cv::Mat cameraMatrix;
+};
+
+struct KeyframesData
+{
+    std::vector<cv::Ptr<cv::OdometryFrameCache> > frames;
+    std::vector<cv::Mat> tableMasks;
+    std::vector<cv::Mat> poses; // +1 for the loop closure
+
+};
+
+class OnlineCaptureServer: public cv::Algorithm
+{
+public:
+    static const int DEFAULT_MAX_CORRESP_COLOR_DIFF = 50; // it's rough now, because first and last frame may have large changes of light conditions
+                                                          // TODO: do something with light changes
+    static double DEFAULT_MAX_CORRESP_DEPTH_DIFF() {return 0.01;} // meters
+    static double DEFAULT_MIN_INLIERS_RATIO() {return 0.6;}
+    static double DEFAULT_SKIPPED_TRANSLATION() {return 0.4;} //meters
+    static double DEFAULT_MIN_TRANSLATION_DIFF() {return 0.08;} //meters
+    static double DEFAULT_MAX_TRANSLATION_DIFF() {return 0.3;} //meters
+    static double DEFAULT_MIN_ROTATION_DIFF() {return 10;} //degrees
+    static double DEFAULT_MAX_ROTATION_DIFF() {return 30;} //degrees
+
+    OnlineCaptureServer();
+
+    cv::Mat push(const cv::Mat& image, const cv::Mat& depth, int frameID);
+
+    void initialize(const cv::Size& frameResolution);
+    void reset();
+    cv::Ptr<KeyframesData> finalize();
+
+    cv::AlgorithmInfo*
+    info() const;
+
+protected:
+    void filterImage(const cv::Mat& src, cv::Mat& dst) const;
+    void firterDepth(const cv::Mat& src, cv::Mat& dst) const;
+
+    // used algorithms
+    cv::Ptr<cv::RgbdNormals> normalsComputer; // inner only
+    cv::Ptr<TableMasker> tableMasker;
+    cv::Ptr<cv::Odometry> odometry;
+
+    // output keyframes data
+    cv::Ptr<KeyframesData> keyframesData;
+
+    // params
+    cv::Mat cameraMatrix;
+
+    int maxCorrespColorDiff;
+    double maxCorrespDepthDiff;
+
+    double minInliersRatio;
+    double skippedTranslation;
+    double minTranslationDiff;
+    double maxTranslationDiff;
+    double minRotationDiff;
+    double maxRotationDiff;
+
+    // state variables
+    cv::Ptr<cv::OdometryFrameCache> firstKeyframe, lastKeyframe, prevFrame, closureFrame;
+    cv::Mat prevPose;
+    int prevFrameID;
+
+    bool isClosing, isClosed;
+    double translationSum;
+    float closureInliersRatio;
+    int closureFrameID;
+    cv::Mat closureTableMask;
+    bool isClosureFrameAdded;
+    cv::Mat closurePose, closurePoseWithFirst;
+
+    bool isInitialied, isFinalized;
+};
+
 static inline
 float tvecNorm(const cv::Mat& Rt)
 {
@@ -35,27 +132,6 @@ void readDirectory(const std::string& directoryName, std::vector<std::string>& f
 void loadTODLikeBase(const std::string& dirname, std::vector<cv::Mat>& bgrImages,
                      std::vector<cv::Mat>& depthes32F, std::vector<std::string>* imageFilenames=0);
 
-/*
- * Masking the data
- */
-
-// Compute mask of table + object pixels.
-// minTableArea is a minimum part of image pixels that have to belong to the table (it's in (0,1))
-bool computeTableWithObjectMask(const cv::Mat& cloud, const cv::Mat& normals, const cv::Mat& cameraMatrix,
-                                cv::Mat& tableWithObjectMask, float minTableArea=0.1, cv::Mat* tableMask=0);
-
-/*
- * Frame-to-frame processing
- */
-
-// Compute the frame-to-frame odometry, choose keyframes, find the last frame that has good odometry with the first frame (for the future loop closure).
-// Returns a set of keyframes and their poses
-// keyframePoses.size() == keyframes.size() + 1 because last pose is from last frame to the first (for the loop closure)
-// keyframeIndices is a vector of the keyframe indices in the given vector of frames
-bool frameToFrameProcess(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
-                         const cv::Mat& cameraMatrix, const cv::Ptr<cv::Odometry>& odometry,
-                         std::vector<cv::Ptr<cv::OdometryFrameCache> >& keyframes, std::vector<cv::Mat>& keyframePoses,
-                         std::vector<int>* keyframeIndices=0);
 
 /*
  * Graph optimization
@@ -124,11 +200,11 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
  */
 
 // Show merged point clouds in PCL Visualizer window
-void showModel(const std::vector<cv::Mat>& bgrImages, const std::vector<int>& indicesInBgrImages,
+void showModel(const std::vector<cv::Mat>& bgrImages,
                const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
                const cv::Mat& cameraMatrix, float voxelFilterSize);
 
-void showModelWithNormals(const std::vector<cv::Mat>& bgrImages, const std::vector<int>& indicesInBgrImages,
+void showModelWithNormals(const std::vector<cv::Mat>& bgrImages,
                const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
                const cv::Mat& cameraMatrix);
 

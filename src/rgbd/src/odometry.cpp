@@ -980,11 +980,12 @@ warpFrameImpl(const cv::Mat& image, const Mat& depth, const Mat& mask,
 namespace cv
 {
 
-OdometryFrameCache::OdometryFrameCache()
+OdometryFrameCache::OdometryFrameCache() : ID(-1)
 {}
 
-OdometryFrameCache::OdometryFrameCache(const Mat& _image, const Mat& _depth, const Mat& _mask)
+OdometryFrameCache::OdometryFrameCache(const Mat& _image, const Mat& _depth, const Mat& _mask, int _ID)
 {
+    ID = _ID;
     image = _image;
     depth = _depth;
     mask = _mask;
@@ -992,6 +993,7 @@ OdometryFrameCache::OdometryFrameCache(const Mat& _image, const Mat& _depth, con
 
 void OdometryFrameCache::release()
 {
+    ID = -1;
     image.release();
     depth.release();
     mask.release();

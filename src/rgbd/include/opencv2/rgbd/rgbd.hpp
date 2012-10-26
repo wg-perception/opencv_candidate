@@ -254,10 +254,11 @@ namespace cv
          };
 
     OdometryFrameCache();
-    OdometryFrameCache(const Mat& image, const Mat& depth, const Mat& mask);
+    OdometryFrameCache(const Mat& image, const Mat& depth, const Mat& mask, int ID=-1);
     void release();
     void releasePyramids();
 
+    int ID;
     Mat image;
     Mat depth;
     Mat mask;

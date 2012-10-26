@@ -62,6 +62,7 @@ include_directories(/opt/ros/groovy/include ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_
 
 add_executable(model_capture samples/model_capture.cpp
                              samples/model_capture/model_capture.hpp
+                             samples/model_capture/model_capture_init.cpp
                              samples/model_capture/ocv_pcl_eigen_convert.hpp
                              samples/model_capture/create_optimizer.hpp
                              samples/model_capture/load_data.cpp

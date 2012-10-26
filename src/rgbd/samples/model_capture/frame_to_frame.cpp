@@ -6,15 +6,16 @@
 using namespace std;
 using namespace cv;
 
+const char checkDataMessage[] = "Please check the data! Sequential frames have to be close to each other (location and color). "
+                                "The first and one of the last frames also have to be "
+                                "really taken from close camera positions and the lighting has to be the same.";
 static
 float computeInliersRatio(const Ptr<OdometryFrameCache>& srcFrame,
                           const Ptr<OdometryFrameCache>& dstFrame,
-                          const Mat& Rt, const Mat& cameraMatrix)
+                          const Mat& Rt, const Mat& cameraMatrix,
+                          int maxColorDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_COLOR_DIFF,
+                          float maxDepthDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_DEPTH_DIFF())
 {
-    const int maxColorDiff = 50; // it's rough now, because first and last frame may have large changes of light conditions
-                                 // TODO: do something with light changes
-    const float maxDepthDiff = 0.01; // meters
-
     Mat warpedSrcImage, warpedSrcDepth, warpedSrcMask;
     warpFrame(srcFrame->image, srcFrame->depth, srcFrame->mask,
               Rt, cameraMatrix, Mat(), warpedSrcImage, &warpedSrcDepth, &warpedSrcMask);
@@ -40,149 +41,116 @@ float computeInliersRatio(const Ptr<OdometryFrameCache>& srcFrame,
     return intersectSize ? static_cast<float>(inliersCount) / intersectSize : 0;
 }
 
-bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
-                         const Mat& cameraMatrix, const Ptr<Odometry>& odometry,
-                         vector<Ptr<OdometryFrameCache> >& keyframes, vector<Mat>& keyframePoses,
-                         vector<int>* keyframeIndices)
+OnlineCaptureServer::OnlineCaptureServer() :
+    maxCorrespColorDiff(DEFAULT_MAX_CORRESP_COLOR_DIFF),
+    maxCorrespDepthDiff(DEFAULT_MAX_CORRESP_DEPTH_DIFF()),
+    minInliersRatio(DEFAULT_MIN_INLIERS_RATIO()),
+    skippedTranslation(DEFAULT_SKIPPED_TRANSLATION()),
+    minTranslationDiff(DEFAULT_MIN_TRANSLATION_DIFF()),
+    maxTranslationDiff(DEFAULT_MAX_TRANSLATION_DIFF()),
+    minRotationDiff(DEFAULT_MIN_ROTATION_DIFF()),
+    maxRotationDiff(DEFAULT_MAX_ROTATION_DIFF()),
+    isInitialied(false),
+    isFinalized(false)
+{}
+
+void OnlineCaptureServer::filterImage(const Mat& src, Mat& dst) const
 {
-    const float minInliersRatio = 0.6f;
-    const float skippedTranslation = 0.4f; // meters
-    //const float minTranslationDiff = 0.05f; // meters
-    const float minTranslationDiff = 0.08f; // meters
-    const float maxTranslationDiff = 0.30f; // meters
-    //const float minRotationDiff = 5.f; // degrees
-    const float minRotationDiff = 10.f; // degrees
-    const float maxRotationDiff = 30.f;// degrees
+    dst = src; // TODO maybe median
+    //medianBlur(src, dst, 3);
+}
 
-    CV_Assert(!frames.empty());
+void OnlineCaptureServer::firterDepth(const Mat& src, Mat& dst) const
+{
+    dst = src; // TODO maybe bilateral
+}
 
-    keyframes.clear();
-    keyframePoses.clear();
-    if(keyframeIndices) keyframeIndices->clear();
+Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
+{
+    CV_Assert(isInitialied);
+    CV_Assert(!normalsComputer.empty());
+    CV_Assert(!tableMasker.empty());
+    CV_Assert(!odometry.empty());
 
-    // first nonempty frame is the first keyframe
-    Ptr<OdometryFrameCache> firstFrame;
-    vector<Mat> frameToFramePoses;
-    size_t firstKeyframeIndex = 0;
-    for(; firstKeyframeIndex < frames.size(); firstKeyframeIndex++)
+    if(isClosed)
     {
-        if(!frames[firstKeyframeIndex].empty())
-        {
-            firstFrame = frames[firstKeyframeIndex];
-            keyframes.push_back(firstFrame);
-
-            keyframePoses.push_back(Mat::eye(4,4,CV_64FC1));
-            frameToFramePoses.push_back(*keyframePoses.rbegin());
-
-            if(keyframeIndices) keyframeIndices->push_back(firstKeyframeIndex);
-            break;
-        }
-
-        frameToFramePoses.push_back(Mat());
+        cout << "Frame " << frameID << ". Loop is already closed. Keyframes count " << keyframesData->frames.size() << endl;
+        return Mat();
     }
 
-    if(firstKeyframeIndex == frames.size())
+    if(_image.empty() || _depth.empty())
     {
-        cout << "Frames are empty." << endl;
-        return false;
+        cout << "Warning: Empty frame " << frameID << endl;
+        return Mat();
     }
 
-    // find frame to frame motion transformations
+    CV_Assert(_image.type() == CV_8UC1);
+    CV_Assert(_depth.type() == CV_32FC1);
+    CV_Assert(_image.size() == _depth.size());
+
+    Mat image, depth;
+    filterImage(_image, image);
+    filterImage(_depth, depth);
+
+    Mat cloud;
+    depthTo3d(depth, cameraMatrix, cloud);
+
+    Mat normals = (*normalsComputer)(cloud);
+
+    Mat tableWithObjectMask, tableMask;
+    if(!(*tableMasker)(cloud, normals, tableWithObjectMask, &tableMask))
     {
-        Ptr<OdometryFrameCache> prevFrame = firstFrame, currFrame;
-        int prevFrameIndex = firstKeyframeIndex;
-        Mat prevPose = frameToFramePoses.rbegin()->clone();
+        cout << "Warning: bad table mask for the frame " << frameID << endl;
+        return Mat();
+    }
 
-        for(size_t i = firstKeyframeIndex + 1; i < frames.size(); i++)
+    Ptr<OdometryFrameCache> currFrame = new OdometryFrameCache(image, depth, tableWithObjectMask);
+
+    Mat pose;
+    bool isKeyframe = false;
+    if(lastKeyframe.empty())
+    {
+        firstKeyframe = currFrame;
+        pose = Mat::eye(4,4,CV_64FC1);
+        isKeyframe = true;
+        cout << "First keyframe ID " << frameID << endl;
+    }
+    else
+    {
+        // find frame to frame motion transformations
         {
-            currFrame = frames[i];
-            if(currFrame.empty())
-            {
-                frameToFramePoses.push_back(Mat());
-                cout << "Warning: Emty frame " << i << endl;
-                continue;
-            }
-
             Mat Rt;
-            cout << "odometry " << i << " -> " << prevFrameIndex << endl;
+            cout << "odometry " << frameID << " -> " << prevFrameID << endl;
             if(!odometry->compute(*currFrame, *prevFrame, Rt) ||
-               computeInliersRatio(currFrame, prevFrame, Rt, cameraMatrix) < minInliersRatio)
+               computeInliersRatio(currFrame, prevFrame, Rt, cameraMatrix, maxCorrespColorDiff, maxCorrespDepthDiff) < minInliersRatio)
             {
-                frameToFramePoses.push_back(Mat());
-                cout << "Warning: Bad odometry " << i << "->" << prevFrameIndex << endl;
-#if 0
-                cout << "tnorm " << tvecNorm(Rt) << endl;
-                cout << "rnorm " << rvecNormDegrees(Rt) << endl;
-
-                Mat warpedImage;
-                warpFrame(currFrame->image, currFrame->depth, currFrame->mask, Rt, cameraMatrix, Mat(),
-                          warpedImage);
-
-                imshow("diff", prevFrame->image - warpedImage);
-                waitKey();
-#endif
-                continue;
+                cout << "Warning: Bad odometry (too far motion or low inliers ratio) " << frameID << "->" << prevFrameID << endl;
+                return Mat();
             }
-
-            prevFrame = currFrame;
-            prevFrameIndex = i;
-            prevPose = prevPose * Rt;
-            frameToFramePoses.push_back(prevPose.clone());
+            pose = prevPose * Rt;
         }
-    }
-
-    CV_Assert(frames.size() == frameToFramePoses.size());
-
-    cout << "First keyframe index " << firstKeyframeIndex << endl;
-
-    float translationSum = 0;
-    int lastKeyframeIndex = firstKeyframeIndex;
-
-    float maxInliersRatioWithFirst = -1;
-    int closureFrameIndex = -1;
-    Mat closureRt;
-    size_t closedKeyframesCount = 0;
-    bool isClosing = false;
-    bool isClosureFrameAdded = false;
-
-    stringstream checkDataMessage;
-    checkDataMessage << "Please check the data! Sequential frames have to be close to each other (location and color). "
-                        "The first and one of the last frames also have to be "
-                        "really taken from close camera positions and the lighting has to be the same.";
-    for(size_t i = firstKeyframeIndex + 1; i < frames.size(); i++)
-    {
-        if(frameToFramePoses[i].empty())
-            continue;
-
-        Ptr<OdometryFrameCache> currFrame = frames[i];
-
-        bool isKeyframeAdded = false;
 
         // check for the current frame: is it keyframe?
         {
-            Mat Rt = (*keyframePoses.rbegin()).inv(DECOMP_SVD) * frameToFramePoses[i];
+            Mat Rt = (*keyframesData->poses.rbegin()).inv(DECOMP_SVD) * pose;
 
             float tnorm = tvecNorm(Rt);
             float rnorm = rvecNormDegrees(Rt);
 
             if(tnorm > maxTranslationDiff || rnorm > maxRotationDiff)
             {
-                cout << "Camera trajectory is broken (between frames " << lastKeyframeIndex << " - " << i << ")." << endl;
+                cout << "Camera trajectory is broken (starting from " << (*keyframesData->frames.rbegin())->ID << " frame)." << endl;
                 cout << checkDataMessage << endl;
-                return false;
+                return Mat();
             }
 
             if((tnorm >= minTranslationDiff || rnorm >= minRotationDiff)) // we don't check inliers ratio here because it was done by frame-to-frame above
             {
-                keyframes.push_back(currFrame);
-                keyframePoses.push_back(frameToFramePoses[i]);
-                if(keyframeIndices) keyframeIndices->push_back(i);
-                lastKeyframeIndex = i;
-                isKeyframeAdded = true;
                 translationSum += tnorm;
                 if(isClosing)
                     cout << "possible ";
-                cout << "keyframe index " << i << endl;
+                cout << "keyframe ID " << frameID << endl;
+                isKeyframe = true;
             }
         }
 
@@ -190,46 +158,125 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
         if(translationSum > skippedTranslation) // ready for closure
         {
             Mat Rt;
-            if(odometry->compute(*currFrame, *firstFrame, Rt))
+            if(odometry->compute(*currFrame, *firstKeyframe, Rt))
             {
                 // we check inliers ratio for the loop closure frames because we didn't do this before
-                float inliersRatio = computeInliersRatio(currFrame, firstFrame, Rt, cameraMatrix);
+                float inliersRatio = computeInliersRatio(currFrame, firstKeyframe, Rt, cameraMatrix, maxCorrespColorDiff, maxCorrespDepthDiff);
                 if(inliersRatio > minInliersRatio)
                 {
-                    if(inliersRatio > maxInliersRatioWithFirst)
+                    if(inliersRatio >= closureInliersRatio)
                     {
                         isClosing = true;
-                        maxInliersRatioWithFirst = inliersRatio;
-                        closureFrameIndex = i;
-                        closureRt = Rt;
-                        isClosureFrameAdded = isKeyframeAdded;
-                        closedKeyframesCount = keyframes.size();
+                        closureInliersRatio = inliersRatio;
+                        closureFrame = currFrame;
+                        closureFrameID = frameID;
+                        closurePoseWithFirst = Rt;
+                        closurePose = pose;
+                        closureTableMask = tableMask;
+                        isClosureFrameAdded = isKeyframe;
+                    }
+                    else if(isClosing)
+                    {
+                        isClosed = true;
                     }
                 }
                 else if(isClosing)
-                    break;
+                {
+                    isClosed = true;
+                }
             }
             else if(isClosing)
-                    break;
+            {
+                isClosed = true;
+            }
         }
     }
-    if(closureFrameIndex > 0)
-    {
-        keyframes.resize(closedKeyframesCount);
-        keyframePoses.resize(closedKeyframesCount);
-        if(keyframeIndices) keyframeIndices->resize(closedKeyframesCount);
 
+    if(isKeyframe && (!isClosed || frameID <= closureFrameID ))
+    {
+        Ptr<OdometryFrameCache> frame = new OdometryFrameCache(currFrame->image, currFrame->depth, tableWithObjectMask, frameID);
+        keyframesData->frames.push_back(frame);
+        keyframesData->tableMasks.push_back(tableMask);
+        keyframesData->poses.push_back(pose);
+
+        lastKeyframe = currFrame;
+    }
+
+    prevFrame = currFrame;
+    prevFrameID = frameID;
+    prevPose = pose.clone();
+
+    return pose.clone();
+}
+
+void OnlineCaptureServer::reset()
+{
+    keyframesData = new KeyframesData();
+
+    firstKeyframe.release();
+    lastKeyframe.release();
+    prevFrame.release();
+    closureFrame.release();
+
+    prevPose.release();
+    prevFrameID = -1;
+
+    isClosing = false;
+    isClosed = false;
+    translationSum = 0.;
+    closureInliersRatio = 0.;
+    closureFrameID = -1;
+    closureTableMask.release();
+    isClosureFrameAdded = false;
+    closurePose.release();
+    closurePoseWithFirst.release();
+
+    isFinalized = false;
+}
+
+void OnlineCaptureServer::initialize(const Size& frameResolution)
+{
+    reset();
+
+    CV_Assert(!cameraMatrix.empty());
+    CV_Assert(cameraMatrix.type() == CV_32FC1);
+    CV_Assert(cameraMatrix.size() == Size(3,3));
+
+    normalsComputer = new RgbdNormals(frameResolution.height, frameResolution.width, CV_32FC1, cameraMatrix); // inner
+    if(tableMasker.empty())
+    {
+        tableMasker = new TableMasker();
+        Ptr<RgbdPlane> planeComputer = new RgbdPlane();
+        planeComputer->set("sensor_error_a", 0.0075f);
+        tableMasker->set("planeComputer", planeComputer);
+    }
+    tableMasker->set("cameraMatrix", cameraMatrix);
+
+    if(odometry.empty())
+        odometry = new RgbdOdometry();
+    odometry->set("cameraMatrix", cameraMatrix);
+
+    isInitialied = true;
+}
+
+cv::Ptr<KeyframesData> OnlineCaptureServer::finalize()
+{
+    CV_Assert(isInitialied);
+
+    if(!closureFrame.empty())
+    {
+        CV_Assert((*keyframesData->frames.rbegin())->ID <= closureFrameID);
         if(!isClosureFrameAdded)
         {
-            keyframes.push_back(frames[closureFrameIndex]);
-            keyframePoses.push_back(frameToFramePoses[closureFrameIndex]);
-            if(keyframeIndices) keyframeIndices->push_back(closureFrameIndex);
+            Ptr<OdometryFrameCache> frame = new OdometryFrameCache(closureFrame->image, closureFrame->depth, closureFrame->mask, closureFrameID);
+            keyframesData->frames.push_back(frame);
+            keyframesData->tableMasks.push_back(closureTableMask);
+            keyframesData->poses.push_back(closurePose);
         }
+        keyframesData->poses.push_back(closurePoseWithFirst);
 
-        keyframePoses.push_back((*keyframePoses.begin()) * closureRt);
-
-        cout << "Last keyframe index " << closureFrameIndex << endl;
-        cout << "keyframes count = " << keyframes.size() << endl;
+        cout << "Last keyframe index " << closureFrameID << endl;
+        cout << "keyframes count = " << keyframesData->frames.size() << endl;
     }
     else
     {
@@ -237,5 +284,8 @@ bool frameToFrameProcess(vector<Ptr<OdometryFrameCache> >& frames,
         cout << checkDataMessage << endl;
     }
 
-    return closureFrameIndex > 0;
+    isClosed = true;
+    isFinalized = true;
+
+    return keyframesData;
 }

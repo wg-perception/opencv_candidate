@@ -20,22 +20,25 @@
 using namespace std;
 using namespace cv;
 
-bool computeTableWithObjectMask(const Mat& cloud, const Mat& normals, const Mat& cameraMatrix,
-                                Mat& tableWithObjectMask, float _minTableArea, Mat* _tableMask)
+TableMasker::TableMasker() :
+    z_filter_min(DEFAULT_Z_FILTER_MIN()),
+    z_filter_max(DEFAULT_Z_FILTER_MAX()),
+    min_table_part(DEFAULT_MIN_TABLE_PART())
+{}
+
+bool TableMasker::operator()(const cv::Mat& cloud, const cv::Mat& normals,
+                             cv::Mat& tableWithObjectMask, cv::Mat* _tableMask) const
 {
-    const float minTableArea = _minTableArea * cloud.total();
-    const float kinect_error_a = 0.0075f;
-    const double table_z_filter_min = 0.005;
-    const double table_z_filter_max = 0.5;
+    const float minTableArea = min_table_part * cloud.total();
 
     CV_Assert(!cloud.empty() && cloud.type() == CV_32FC3);
     CV_Assert(!normals.empty() && normals.type() == CV_32FC3);
     CV_Assert(cloud.size() == normals.size());
 
-    // Find all planes in the frame.
-    Ptr<RgbdPlane> planeComputer = cv::Algorithm::create<cv::RgbdPlane>("RGBD.RgbdPlane");
-    planeComputer->set("sensor_error_a", kinect_error_a);
+    CV_Assert(!cameraMatrix.empty());
+    CV_Assert(!planeComputer.empty());
 
+    // Find all planes in the frame.
     Mat_<uchar> planesMask;
     vector<Vec4f> planesCoeffs;
     (*planeComputer)(cloud, normals, planesMask, planesCoeffs);
@@ -101,7 +104,7 @@ bool computeTableWithObjectMask(const Mat& cloud, const Mat& normals, const Mat&
     // Get indices of points in the prism
     pcl::PointIndices pclPrismPointsIndices;
     pcl::ExtractPolygonalPrismData<pcl::PointXYZ> pclPrismSegmentator;
-    pclPrismSegmentator.setHeightLimits(table_z_filter_min, table_z_filter_max);
+    pclPrismSegmentator.setHeightLimits(z_filter_min, z_filter_max);
     pcl::PointCloud<pcl::PointXYZ> pclCloud;
     cvtCloud_cv2pcl(cloud, Mat(), pclCloud);
     pclPrismSegmentator.setInputCloud(boost::make_shared<const pcl::PointCloud<pcl::PointXYZ> >(pclCloud));

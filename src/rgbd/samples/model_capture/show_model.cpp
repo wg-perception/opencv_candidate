@@ -62,18 +62,17 @@ void voxelFilter(pcl::PointCloud<pcl::PointXYZRGB>& cloud, double grid_size)
     cloud_downsampled.swap(cloud);
 }
 
-void showModel(const vector<Mat>& bgrImages, const vector<int>& indicesInBgrImages,
+void showModel(const vector<Mat>& bgrImages,
                const vector<Ptr<OdometryFrameCache> >& frames, const vector<Mat>& poses,
                const Mat& cameraMatrix, float voxelFilterSize)
 {
     pcl::PointCloud<pcl::PointXYZRGB> globalCloud;
 
-    CV_Assert(indicesInBgrImages.empty() || indicesInBgrImages.size() == frames.size());
     CV_Assert(frames.size() == poses.size() || (frames.size() + 1) == poses.size());
 
     for(size_t i = 0; i < frames.size(); i++)
     {
-        int bgrIdx = indicesInBgrImages.empty() ? i : indicesInBgrImages[i];
+        int bgrIdx = frames[i]->ID < 0 ? i : frames[i]->ID;
         Mat cloud;
         if(!frames[i]->pyramidCloud.empty())
             cloud = frames[i]->pyramidCloud[0];
@@ -111,19 +110,18 @@ void showModel(const vector<Mat>& bgrImages, const vector<int>& indicesInBgrImag
 }
 
 
-void showModelWithNormals(const vector<Mat>& bgrImages, const vector<int>& indicesInBgrImages,
+void showModelWithNormals(const vector<Mat>& bgrImages,
                const vector<Ptr<OdometryFrameCache> >& frames, const vector<Mat>& poses,
                const Mat& cameraMatrix)
 {
     pcl::PointCloud<pcl::PointXYZRGB> globalCloud;
     pcl::PointCloud<pcl::Normal> globalNormals;
 
-    CV_Assert(indicesInBgrImages.empty() || indicesInBgrImages.size() == frames.size());
     CV_Assert(frames.size() == poses.size() || (frames.size() + 1) == poses.size());
 
     for(size_t i = 0; i < frames.size(); i++)
     {
-        int bgrIdx = indicesInBgrImages.empty() ? i : indicesInBgrImages[i];
+        int bgrIdx = frames[i]->ID < 0 ? i : frames[i]->ID;
         Mat cloud;
         if(!frames[i]->pyramidCloud.empty())
             cloud = frames[i]->pyramidCloud[0];
