@@ -2,6 +2,7 @@
 
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std;
 using namespace cv;
@@ -84,12 +85,19 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
         return Mat();
     }
 
-    CV_Assert(_image.type() == CV_8UC1);
+    //color information is ingored now but can be used in future
+    Mat _grayImage = _image;
+    if (_image.channels() == 3)
+    {
+      cvtColor(_image, _grayImage, CV_BGR2GRAY);
+    }
+
+    CV_Assert(_grayImage.type() == CV_8UC1);
     CV_Assert(_depth.type() == CV_32FC1);
-    CV_Assert(_image.size() == _depth.size());
+    CV_Assert(_grayImage.size() == _depth.size());
 
     Mat image, depth;
-    filterImage(_image, image);
+    filterImage(_grayImage, image);
     filterImage(_depth, depth);
 
     Mat cloud;
