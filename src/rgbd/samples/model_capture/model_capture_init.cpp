@@ -48,5 +48,7 @@ CV_INIT_ALGORITHM_FIX(OnlineCaptureServer, "ModelCapture.OnlineCaptureServer",
     obj.info()->addParam(obj, "skippedTranslation", obj.skippedTranslation);
     obj.info()->addParam(obj, "minTranslationDiff", obj.minTranslationDiff);
     obj.info()->addParam(obj, "maxTranslationDiff", obj.maxTranslationDiff);
+    obj.info()->addParam(obj, "minRotationDiff", obj.minRotationDiff);
+    obj.info()->addParam(obj, "maxRotationDiff", obj.maxRotationDiff);
     obj.info()->addParam(obj, "isInitialied", obj.isInitialied, true);
     obj.info()->addParam(obj, "isFinalized", obj.isFinalized, true);)
