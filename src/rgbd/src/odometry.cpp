@@ -997,6 +997,11 @@ void OdometryFrameCache::release()
     mask.release();
     normals.release();
 
+    releasePyramids();
+}
+
+void OdometryFrameCache::releasePyramids()
+{
     pyramidImage.clear();
     pyramidDepth.clear();
     pyramidMask.clear();

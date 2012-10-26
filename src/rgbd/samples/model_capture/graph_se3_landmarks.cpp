@@ -188,7 +188,10 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
 
     const double maxDepthDiff = 0.002;
     for(size_t i = 0; i < frames.size(); i++)
+    {
+        frames[i]->releasePyramids();
         odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+    }
 
     const int iterCount = 3;//7
     const int minCorrespCount = 3;

@@ -425,7 +425,10 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     odom.set("cameraMatrix", cameraMatrix);
 
     for(size_t i = 0; i < frames.size(); i++)
+    {
+        frames[i]->releasePyramids();
         odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+    }
 
     refinedPoses.resize(poses.size());
     for(size_t i = 0; i < poses.size(); i++)
@@ -447,11 +450,13 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         const int optIterCount = 1;
         cout << "Vertices count: " << optimizer->vertices().size() << endl;
         cout << "Edges count: " << optimizer->edges().size() << endl;
+        cout << "Start optimization " << endl;
         if(optimizer->optimize(optIterCount) != optIterCount)
         {
             optimizer->clear();
             break;
         }
+        cout << "Finish optimization " << endl;
 
         getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
 
