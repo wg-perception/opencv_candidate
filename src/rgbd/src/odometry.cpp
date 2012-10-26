@@ -143,8 +143,8 @@ void preparePyramidImage(const Mat& image, vector<Mat>& pyramidImage, size_t lev
 {
     if(!pyramidImage.empty())
     {
-        if(pyramidImage.size() != levelCount)
-            CV_Error(CV_StsBadSize, "Levels count of pyramidImage has to be equal to size of iterCounts.");
+        if(pyramidImage.size() < levelCount)
+            CV_Error(CV_StsBadSize, "Levels count of pyramidImage has to be equal or less than size of iterCounts.");
 
         CV_Assert(pyramidImage[0].size() == image.size());
         for(size_t i = 0; i < pyramidImage.size(); i++)
@@ -159,8 +159,8 @@ void preparePyramidDepth(const Mat& depth, vector<Mat>& pyramidDepth, size_t lev
 {
     if(!pyramidDepth.empty())
     {
-        if(pyramidDepth.size() != levelCount)
-            CV_Error(CV_StsBadSize, "Levels count of pyramidDepth has to be equal to size of iterCounts.");
+        if(pyramidDepth.size() < levelCount)
+            CV_Error(CV_StsBadSize, "Levels count of pyramidDepth has to be equal or less than size of iterCounts.");
 
         CV_Assert(pyramidDepth[0].size() == depth.size());
         for(size_t i = 0; i < pyramidDepth.size(); i++)
@@ -177,7 +177,7 @@ void preparePyramidMask(const Mat& mask, const vector<Mat>& pyramidDepth, float 
     if(!pyramidMask.empty())
     {
         if(pyramidMask.size() != pyramidDepth.size())
-            CV_Error(CV_StsBadSize, "Levels count of pyramidMask has to be equal to size of iterCounts.");
+            CV_Error(CV_StsBadSize, "Levels count of pyramidMask has to be equal to size of pyramidDepth.");
 
         for(size_t i = 0; i < pyramidMask.size(); i++)
         {
