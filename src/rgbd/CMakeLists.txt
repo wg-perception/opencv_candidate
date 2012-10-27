@@ -85,3 +85,4 @@ target_link_libraries(model_capture ${OpenCV_LIBRARIES}
                                     cxsparse
                                     ${CHOLMOD_LIBRARIES}
                                     ${CSPARSE_LIBRARY} /opt/ros/groovy/lib/libg2o_csparse_extension.so)
+set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")

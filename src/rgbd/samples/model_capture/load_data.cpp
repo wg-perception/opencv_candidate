@@ -33,14 +33,10 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
 {
     CV_Assert(!dirname.empty());
 
-    bgrImages.clear();
-    depthes32F.clear();
-    if(imageFilenames)
-        imageFilenames->clear();
-
     vector<string> allFilenames;
     readDirectory(dirname, allFilenames, false);
 
+    vector<string> imageIndices;
     for(size_t i = 0; i < allFilenames.size(); i++)
     {
         const string& imageFilename = allFilenames[i];
@@ -53,44 +49,56 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
            imageIndex.find_first_not_of("0123456789") == std::string::npos &&
            imageFilename.substr(imageFilename.length() - 4, 4) == ".png")
         {
-            cout << "Load " << imageFilename << endl;
+            imageIndices.push_back(imageIndex);
+        }
+    }
 
-            if(imageFilenames)
-                imageFilenames->push_back(imageFilename);
+    bgrImages.resize(imageIndices.size());
+    depthes32F.resize(imageIndices.size());
+    if(imageFilenames)
+        imageFilenames->resize(imageIndices.size());
 
-            // read image
-            {
-                string imagePath = dirname + imageFilename;
-                Mat image = imread(imagePath);
-                CV_Assert(!image.empty());
-                bgrImages.push_back(image);
-            }
+#pragma omp parallel for
+    for(size_t i = 0; i < imageIndices.size(); i++)
+    {
+        string imageFilename = "image_" + imageIndices[i] + ".png";
+        cout << "Load " << imageFilename << endl;
 
-            // read depth
-            {
-                const string depthPath = "depth_image_" + imageIndex + ".xml.gz";
-                Mat depth;
-                FileStorage fs(dirname + depthPath, FileStorage::READ);
-                CV_Assert(fs.isOpened());
+        if(imageFilenames)
+            (*imageFilenames)[i] = imageFilename;
+
+        // read image
+        {
+            string imagePath = dirname + imageFilename;
+            Mat image = imread(imagePath);
+            CV_Assert(!image.empty());
+            bgrImages[i] = image;
+        }
+
+        // read depth
+        {
+            const string depthPath = "depth_image_" + imageIndices[i] + ".xml.gz";
+            Mat depth;
+            FileStorage fs(dirname + depthPath, FileStorage::READ);
+            CV_Assert(fs.isOpened());
 #if 1
-                fs["depth_image"] >> depth;
+            fs["depth_image"] >> depth;
 #else
-                cout << "Bilateral iltering" << endl;
-                fs["depth_image"] >> depth;
+            cout << "Bilateral iltering" << endl;
+            fs["depth_image"] >> depth;
 
-                const double depth_sigma = 0.003;
-                const double space_sigma = 3.5;  // in pixels
-                Mat invalidDepthMask = (depth != depth) | (depth == 0.);
-                depth.setTo(-5*depth_sigma, invalidDepthMask);
-                Mat filteredDepth;
-                bilateralFilter(depth, filteredDepth, -1, depth_sigma, space_sigma);
-                filteredDepth.setTo(std::numeric_limits<float>::quiet_NaN(), invalidDepthMask);
-                depth = filteredDepth;
+            const double depth_sigma = 0.003;
+            const double space_sigma = 3.5;  // in pixels
+            Mat invalidDepthMask = (depth != depth) | (depth == 0.);
+            depth.setTo(-5*depth_sigma, invalidDepthMask);
+            Mat filteredDepth;
+            bilateralFilter(depth, filteredDepth, -1, depth_sigma, space_sigma);
+            filteredDepth.setTo(std::numeric_limits<float>::quiet_NaN(), invalidDepthMask);
+            depth = filteredDepth;
 #endif
-                CV_Assert(!depth.empty());
-                CV_Assert(depth.type() == CV_32FC1);
-                depthes32F.push_back(depth);
-            }
+            CV_Assert(!depth.empty());
+            CV_Assert(depth.type() == CV_32FC1);
+            depthes32F[i] = depth;
         }
     }
 }
