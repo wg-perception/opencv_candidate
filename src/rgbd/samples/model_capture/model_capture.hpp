@@ -38,8 +38,7 @@ struct KeyframesData
 {
     std::vector<cv::Ptr<cv::OdometryFrameCache> > frames;
     std::vector<cv::Mat> tableMasks;
-    std::vector<cv::Mat> poses; // +1 for the loop closure
-
+    std::vector<cv::Mat> poses; // +1 for the loop closure (if the trajectory is closed)
 };
 
 class OnlineCaptureServer: public cv::Algorithm
