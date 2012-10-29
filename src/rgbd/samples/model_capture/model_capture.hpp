@@ -56,7 +56,8 @@ public:
 
     OnlineCaptureServer();
 
-    cv::Mat push(const cv::Mat& image, const cv::Mat& depth, int frameID);
+    cv::Mat push(const cv::Mat& image, const cv::Mat& depth, int frameID, bool *isKeyframe = 0);
+    bool isLoopClosed() const;
 
     void initialize(const cv::Size& frameResolution);
     void reset();

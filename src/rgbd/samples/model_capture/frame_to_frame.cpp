@@ -66,7 +66,12 @@ void OnlineCaptureServer::firterDepth(const Mat& src, Mat& dst) const
     dst = src; // TODO maybe bilateral
 }
 
-Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
+bool OnlineCaptureServer::isLoopClosed() const
+{
+  return isClosed;
+}
+
+Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID, bool *isKeyframePtr)
 {
     CV_Assert(isInitialied);
     CV_Assert(!isFinalized);
@@ -210,6 +215,11 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
         keyframesData->poses.push_back(pose);
 
         lastKeyframe = currFrame;
+    }
+
+    if (isKeyframePtr != 0)
+    {
+      *isKeyframePtr = isKeyframe;
     }
 
     prevFrame = currFrame;
