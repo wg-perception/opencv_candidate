@@ -147,4 +147,5 @@ void refineSE3Poses(const vector<Mat>& poses, vector<Mat>& refinedPoses)
     getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
 
     optimizer->clear();
+    delete optimizer;
 }

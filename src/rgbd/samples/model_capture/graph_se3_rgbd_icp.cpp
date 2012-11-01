@@ -454,6 +454,7 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         if(optimizer->optimize(optIterCount) != optIterCount)
         {
             optimizer->clear();
+            delete optimizer;
             break;
         }
         cout << "Finish optimization " << endl;
@@ -461,5 +462,6 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
 
         optimizer->clear();
+        delete optimizer;
     }
 }

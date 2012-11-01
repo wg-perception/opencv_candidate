@@ -381,6 +381,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         if(optimizer->optimize(optIterCount) != optIterCount)
         {
             optimizer->clear();
+            delete optimizer;
             break;
         }
 
@@ -424,6 +425,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         }
 
         optimizer->clear();
+        delete optimizer;
     }
 
     // remove points without correspondences
