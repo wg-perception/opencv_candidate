@@ -11,7 +11,9 @@
   <build_depends>catkin</build_depends>
   <build_depends>libg2o</build_depends>
   <build_depends>opencv2</build_depends>
+  <build_depends>pcl</build_depends>
 
   <depends>libg2o</depends>
   <depends>opencv2</depends>
+  <depends>pcl</depends>
 </stack>
