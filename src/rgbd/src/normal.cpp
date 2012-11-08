@@ -318,8 +318,8 @@ namespace
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-static void accumBilateral(long delta, long i, long j, long * A, long * b, int threshold)
+static void
+accumBilateral(long delta, long i, long j, long * A, long * b, int threshold)
 {
   long f = std::abs(delta) < threshold ? 1 : 0;
 
@@ -329,8 +329,8 @@ static void accumBilateral(long delta, long i, long j, long * A, long * b, int t
   A[0] += fi * i;
   A[1] += fi * j;
   A[3] += fj * j;
-  b[0]  += fi * delta;
-  b[1]  += fj * delta;
+  b[0] += fi * delta;
+  b[1] += fj * delta;
 }
 
 namespace
@@ -345,7 +345,8 @@ namespace
   public:
     typedef cv::Vec<T, 3> Vec3T;
 
-    LINEMOD(int rows, int cols, int window_size, int depth, const cv::Mat &K, cv::RgbdNormals::RGBD_NORMALS_METHOD method)
+    LINEMOD(int rows, int cols, int window_size, int depth, const cv::Mat &K,
+            cv::RgbdNormals::RGBD_NORMALS_METHOD method)
         :
           RgbdNormalsImpl(rows, cols, window_size, depth, K, method)
     {
@@ -379,9 +380,6 @@ namespace
     {
       cv::Mat_<Vec3T> normals(rows_, cols_);
 
-      const unsigned short * lp_depth = depth[0];
-      Vec3T * normal = normals[0];
-
       const int l_W = cols_;
       const int l_H = rows_;
 
@@ -395,56 +393,43 @@ namespace
       const int l_offset6 = 0 + l_r * l_W;
       const int l_offset7 = +l_r + l_r * l_W;
 
-      unsigned short distance_threshold = 10000;
-      int difference_threshold = 10;
+      int difference_threshold = 50;
       for (int l_y = l_r; l_y < l_H - l_r - 1; ++l_y)
       {
-        const unsigned short * lp_line = lp_depth + (l_y * l_W + l_r);
+        const unsigned short * lp_line = depth[0] + (l_y * l_W + l_r);
+        Vec3T *normal = normals[0] + (l_y * l_W + l_r);
 
         for (int l_x = l_r; l_x < l_W - l_r - 1; ++l_x)
         {
           long l_d = lp_line[0];
 
-          if (l_d < distance_threshold)
-          {
-            // accum
-            long l_A[4];
-            l_A[0] = l_A[1] = l_A[2] = l_A[3] = 0;
-            long l_b[2];
-            l_b[0] = l_b[1] = 0;
-            accumBilateral(lp_line[l_offset0] - l_d, -l_r, -l_r, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset1] - l_d, 0, -l_r, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset2] - l_d, +l_r, -l_r, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset3] - l_d, -l_r, 0, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset4] - l_d, +l_r, 0, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset5] - l_d, -l_r, +l_r, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset6] - l_d, 0, +l_r, l_A, l_b, difference_threshold);
-            accumBilateral(lp_line[l_offset7] - l_d, +l_r, +l_r, l_A, l_b, difference_threshold);
+          // accum
+          long l_A[4];
+          l_A[0] = l_A[1] = l_A[2] = l_A[3] = 0;
+          long l_b[2];
+          l_b[0] = l_b[1] = 0;
+          accumBilateral(lp_line[l_offset0] - l_d, -l_r, -l_r, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset1] - l_d, 0, -l_r, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset2] - l_d, +l_r, -l_r, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset3] - l_d, -l_r, 0, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset4] - l_d, +l_r, 0, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset5] - l_d, -l_r, +l_r, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset6] - l_d, 0, +l_r, l_A, l_b, difference_threshold);
+          accumBilateral(lp_line[l_offset7] - l_d, +l_r, +l_r, l_A, l_b, difference_threshold);
 
-            // solve
-            long l_det = l_A[0] * l_A[3] - l_A[1] * l_A[1];
-            long l_ddx = l_A[3] * l_b[0] - l_A[1] * l_b[1];
-            long l_ddy = -l_A[1] * l_b[0] + l_A[0] * l_b[1];
+          // solve
+          long l_det = l_A[0] * l_A[3] - l_A[1] * l_A[1];
+          long l_ddx = l_A[3] * l_b[0] - l_A[1] * l_b[1];
+          long l_ddy = -l_A[1] * l_b[0] + l_A[0] * l_b[1];
 
-            /// @todo Magic number 1150 is focal length? This is something like
-            /// f in SXGA mode, but in VGA is more like 530.
-            float l_nx = static_cast<float>(1150 * l_ddx);
-            float l_ny = static_cast<float>(1150 * l_ddy);
-            float l_nz = static_cast<float>(-l_det * l_d);
+          /// @todo Magic number 1150 is focal length? This is something like
+          /// f in SXGA mode, but in VGA is more like 530.
+          T l_nx = K_.at < T > (0, 0) * l_ddx;
+          T l_ny = K_.at < T > (1, 1) * l_ddy;
+          T l_nz = -l_det * l_d;
 
-            float l_sqrt = sqrtf(l_nx * l_nx + l_ny * l_ny + l_nz * l_nz);
+          signNormal(l_nx, l_ny, l_nz, *normal);
 
-            if (l_sqrt > 0)
-            {
-              float l_norminv = 1.0f / (l_sqrt);
-
-              l_nx *= l_norminv;
-              l_ny *= l_norminv;
-              l_nz *= l_norminv;
-
-              *normal = Vec3T(l_nx, l_ny, l_nz);
-            }
-          }
           ++lp_line;
           ++normal;
         }
@@ -665,7 +650,9 @@ namespace cv
     CV_Assert(rows > 0 && cols > 0 && (depth == CV_32F || depth == CV_64F));
     CV_Assert(window_size == 1 || window_size == 3 || window_size == 5 || window_size == 7);
     CV_Assert(K_.cols == 3 && K.rows == 3 && (K.depth() == CV_32F || K.depth() == CV_64F));
-    CV_Assert(method == RGBD_NORMALS_METHOD_FALS || method == RGBD_NORMALS_METHOD_LINEMOD || method==RGBD_NORMALS_METHOD_SRI);
+    CV_Assert(
+        method == RGBD_NORMALS_METHOD_FALS || method == RGBD_NORMALS_METHOD_LINEMOD
+        || method == RGBD_NORMALS_METHOD_SRI);
     switch (method)
     {
       case (RGBD_NORMALS_METHOD_FALS):
