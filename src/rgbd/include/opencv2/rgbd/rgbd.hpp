@@ -89,6 +89,13 @@ namespace cv
 
   /** Object that can compute the normals in an image.
    * It is an object as it can cache data for speed efficiency
+   * The implemented methods are either:
+   * - FALS (the fastest) and SRI from
+   * ``Fast and Accurate Computation of Surface Normals from Range Images``
+   * by H. Badino, D. Huber, Y. Park and T. Kanade
+   * - the normals with bilateral filtering on a depth image from
+   * ``Gradient Response Maps for Real-Time Detection of Texture-Less Objects``
+   * by S. Hinterstoisser, C. Cagniart, S. Ilic, P. Sturm, N. Navab, P. Fua, and V. Lepetit
    */
   CV_EXPORTS
   class RgbdNormals: public Algorithm
@@ -133,6 +140,12 @@ namespace cv
      */
     cv::Mat
     operator()(const cv::Mat &points) const;
+
+    /** Initializes some data that is cached for later computation
+     * If that function is not called, it will be called the first time normals are computed
+     */
+    void
+    initialize() const;
 
     /** Return the current method in that normal computer
      * @return

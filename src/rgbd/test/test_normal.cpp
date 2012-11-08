@@ -218,6 +218,7 @@ protected:
             std::cout << "* double" << std::endl;
 
           cv::RgbdNormals normals_computer(H, W, depth, K, 5, method);
+          normals_computer.initialize();
 
           std::vector<Plane> plane_params;
           cv::Mat points3d, ground_normals;

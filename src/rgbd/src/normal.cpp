@@ -536,7 +536,7 @@ namespace
       //convert map to 2 maps in short format for increasing speed in remap function
       cv::convertMaps(euclideanMap_, cv::Mat(), invxy_, invfxy_, CV_16SC2);
 
-      // Update the kernels: the steps are dues to the fact that derivatives will be computed on a grid where
+      // Update the kernels: the steps are due to the fact that derivatives will be computed on a grid where
       // the step is not 1. Only need to do it on one dimension as it computes derivatives in only one direction
       kx_dx_ /= theta_step_;
       ky_dy_ /= phi_step_;
@@ -715,6 +715,19 @@ namespace cv
     reinterpret_cast<RgbdNormalsImpl *>(rgbd_normals_impl_)->cache();
   }
 
+  /** Initializes some data that is cached for later computation
+   * If that function is not called, it will be called the first time normals are computed
+   */
+  void
+  RgbdNormals::initialize() const
+  {
+    if (rgbd_normals_impl_ == 0)
+      initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
+    else if (!reinterpret_cast<RgbdNormalsImpl *>(rgbd_normals_impl_)->validate(rows_, cols_, depth_, K_, window_size_,
+                                                                                method_))
+      initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
+  }
+
   /** Given a set of 3d points in a depth image, compute the normals at each point
    * using the SRI method described in
    * ``Fast and Accurate Computation of Surface Normals from Range Images``
@@ -731,11 +744,7 @@ namespace cv
     CV_Assert(
         ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || (in_points3d.channels()
             == 1));
-    if (rgbd_normals_impl_ == 0)
-      initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
-    else if (!reinterpret_cast<RgbdNormalsImpl *>(rgbd_normals_impl_)->validate(rows_, cols_, depth_, K_, window_size_,
-                                                                                method_))
-      initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
+    initialize();
 
     // Precompute something for RGBD_NORMALS_METHOD_SRI and RGBD_NORMALS_METHOD_FALS
     cv::Mat points3d, radius;
