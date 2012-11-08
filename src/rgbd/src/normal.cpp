@@ -481,7 +481,7 @@ namespace
 
       // Get the mapping function for SRI
       float min_theta = std::asin(sin_theta(0, 0)), max_theta = std::asin(sin_theta(0, cols_ - 1));
-      float min_phi = std::asin(sin_phi(0, 0)), max_phi = std::asin(sin_phi(rows_ - 1, 0));
+      float min_phi = std::asin(sin_phi(0, cols_/2-1)), max_phi = std::asin(sin_phi(rows_ - 1, cols_/2-1));
 
       std::vector<cv::Point3f> points3d(cols_ * rows_);
       R_hat_.create(rows_, cols_);
@@ -513,11 +513,28 @@ namespace
       }
 
       map_.create(rows_, cols_);
-      cv::Mat rvec;
-      cv::Rodrigues(cv::Mat::eye(3, 3, CV_32F), rvec);
-      cv::Mat tvec = (cv::Mat_<float>(1, 3) << 0, 0, 0);
-      cv::projectPoints(points3d, rvec, tvec, K_, cv::Mat(), map_);
+      cv::projectPoints(points3d, cv::Mat(3,1,CV_32FC1,cv::Scalar::all(0.0f)), cv::Mat(3,1,CV_32FC1,cv::Scalar::all(0.0f)), K_, cv::Mat(), map_);
       map_ = map_.reshape(2, rows_);
+      cv::convertMaps(map_, cv::Mat(), xy_, fxy_, CV_16SC2);
+
+      //map for converting from Spherical coordinate space to Euclidean space
+      euclideanMap_.create(rows_,cols_);
+      float invFx = 1.0f/K_.at<T>(0,0), cx = K_.at<T>(0,2);
+      double invFy = 1.0f/K_.at<T>(1,1), cy = K_.at<T>(1,2);
+      for (int i = 0; i < rows_; i++)
+      {
+          float y = (i - cy)*invFy;
+          for (int j = 0; j < cols_; j++)
+          {
+              float x = (j - cx)*invFx;
+              float theta = std::atan(x);
+              float phi = std::asin(y/std::sqrt(x*x+y*y+1.0f));
+
+              euclideanMap_(i,j) = cv::Vec2f((theta-min_theta)/theta_step_,(phi-min_phi)/phi_step_);
+          }
+      }
+      //convert map to 2 maps in short format for increasing speed in remap function
+      cv::convertMaps(euclideanMap_, cv::Mat(), invxy_, invfxy_, CV_16SC2);
 
       // Update the kernels: the steps are dues to the fact that derivatives will be computed on a grid where
       // the step is not 1. Only need to do it on one dimension as it computes derivatives in only one direction
@@ -547,12 +564,14 @@ namespace
       // Interpolate the radial image to make derivatives meaningful
       cv::Mat_<T> r;
       // higher quality remapping does not help here
-      cv::remap(r_non_interp, r, map_, cv::Mat(), CV_INTER_LINEAR);
+      cv::remap(r_non_interp, r, xy_, fxy_, CV_INTER_LINEAR);
 
       // Compute the derivatives with respect to theta and phi
       // TODO add bilateral filtering (as done in kinfu)
       cv::Mat_<T> r_theta, r_phi;
       cv::sepFilter2D(r, r_theta, r.depth(), kx_dx_, ky_dx_);
+      //current OpenCV version sometimes corrupts r matrix after second call of sepFilter2D
+      //it depends on resolution, be careful
       cv::sepFilter2D(r, r_phi, r.depth(), kx_dy_, ky_dy_);
 
       // Fill the result matrix
@@ -582,7 +601,15 @@ namespace
         }
       }
 
-      return normals;
+      cv::Mat normals_euclidean(normals.size(), CV_32FC3);
+      cv::remap(normals, normals_euclidean, invxy_, invfxy_, cv::INTER_LINEAR);
+      normal = normals_euclidean.ptr<Vec3T>(0);
+      Vec3T * normal_end = normal + rows_ * cols_;
+      for (; normal != normal_end; ++normal)
+      {
+        signNormal((*normal)[0], (*normal)[1], (*normal)[2], *normal);
+      }
+      return normals_euclidean;
     }
   private:
     /** Stores R */
@@ -593,6 +620,10 @@ namespace
     cv::Mat kx_dx_, ky_dx_, kx_dy_, ky_dy_;
     /** mapping function to get an SRI image */
     cv::Mat_<cv::Vec2f> map_;
+    cv::Mat xy_, fxy_;
+
+    cv::Mat_<cv::Vec2f> euclideanMap_;
+    cv::Mat invxy_, invfxy_;
   };
 }
 
