@@ -130,8 +130,8 @@ gen_points_3d(std::vector<Plane>& planes_out, cv::Mat_<unsigned char> &plane_mas
       planes.push_back(px);
     }
   }
-  cv::Mat_<cv::Vec3f> outp(H, W);
-  cv::Mat_<cv::Vec3f> outn(H, W);
+  cv::Mat_ < cv::Vec3f > outp(H, W);
+  cv::Mat_ < cv::Vec3f > outn(H, W);
   plane_mask.create(H, W);
 
   // n  ( r - r_0) = 0
@@ -173,18 +173,23 @@ protected:
     try
     {
       cv::Mat_<unsigned char> plane_mask;
-      for (unsigned char i = 0; i < 2; ++i)
+      for (unsigned char i = 0; i < 3; ++i)
       {
         cv::RgbdNormals::RGBD_NORMALS_METHOD method;
-        if (i == 0)
+        switch (i)
         {
-          method = cv::RgbdNormals::RGBD_NORMALS_METHOD_FALS;
-          std::cout << "FALS" << std::endl;
-        }
-        else if (i == 1)
-        {
-          method = cv::RgbdNormals::RGBD_NORMALS_METHOD_SRI;
-          std::cout << "SRI" << std::endl;
+          case 0:
+            method = cv::RgbdNormals::RGBD_NORMALS_METHOD_FALS;
+            std::cout << "FALS" << std::endl;
+            break;
+          case 1:
+            method = cv::RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD;
+            std::cout << "LINEMOD" << std::endl;
+            break;
+          case 2:
+            method = cv::RgbdNormals::RGBD_NORMALS_METHOD_SRI;
+            std::cout << "SRI" << std::endl;
+            break;
         }
 
         for (unsigned char j = 0; j < 2; ++j)
@@ -220,7 +225,17 @@ protected:
   {
     cv::TickMeter tm;
     tm.start();
-    cv::Mat in_normals = normals_computer(points3d);
+    cv::Mat in_normals;
+    if (normals_computer.method() == cv::RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD)
+    {
+      std::vector<cv::Mat> channels;
+      cv::split(points3d, channels);
+      cv::Mat depth;
+      channels[2].convertTo(depth, CV_16U, 1e-3);
+      in_normals = normals_computer(cv::Mat_<unsigned short>(depth));
+    }
+    else
+      in_normals = normals_computer(points3d);
     tm.stop();
 
     cv::Mat_<cv::Vec3f> normals, ground_normals;
@@ -242,7 +257,7 @@ protected:
       }
 
     err /= normals.rows * normals.cols;
-    ASSERT_LE(err, thresh)<< "mean diff: " << err << " thresh: " << thresh << std::endl;
+    ASSERT_LE(err, thresh) << "mean diff: " << err << " thresh: " << thresh << std::endl;
     std::cout << "Average error: " << err << " Speed: " << tm.getTimeMilli() << " ms" << std::endl;
   }
 };
@@ -334,7 +349,7 @@ protected:
           }
         }
         // Get the best match
-        ASSERT_LE(float(n_max-n_gt)/n_gt, 0.001);
+        ASSERT_LE(float(n_max - n_gt) / n_gt, 0.001);
         // Compare the normals
         cv::Vec3d normal(plane_coefficients[i_max][0], plane_coefficients[i_max][1], plane_coefficients[i_max][2]);
         ASSERT_GE(std::abs(gt_planes[j].n.dot(normal)), 0.95);
