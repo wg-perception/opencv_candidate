@@ -2,13 +2,15 @@ cmake_minimum_required(VERSION 2.8)
 project(opencv_candidate)
 find_package(catkin REQUIRED)
 if (${catkin_VERSION} VERSION_GREATER "0.5.28")
-catkin_package(INCLUDE_DIRS include
+catkin_package(DEPENDS opencv2 libg2o
+               INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          opencv_rgbd
 )
 else()
 catkin_stack()
 catkin_project(opencv_candidate
+               DEPENDS opencv2 libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          opencv_rgbd

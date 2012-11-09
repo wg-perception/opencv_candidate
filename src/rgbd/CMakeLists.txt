@@ -51,14 +51,13 @@ include_directories(SYSTEM ${PCL_INCLUDE_DIRS}
                            /usr/include/suitesparse
 )
 
-LIST(APPEND CMAKE_MODULE_PATH ${g2o_SOURCE_DIR}/cmake_modules)
-
 # Find Eigen3
 FIND_PACKAGE(Eigen)
 #FIND_PACKAGE(Cholmod)
 #FIND_PACKAGE(CSparse)
+find_package(libg2o)
 
-include_directories(/opt/ros/groovy/include ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
+include_directories(SYSTEM ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
 
 add_executable(model_capture samples/model_capture.cpp
                              samples/model_capture/model_capture.hpp
@@ -73,16 +72,14 @@ add_executable(model_capture samples/model_capture.cpp
                              samples/model_capture/graph_se3_landmarks.cpp
                              samples/model_capture/show_model.cpp
               )
-link_directories(/opt/ros/groovy/lib)
 target_link_libraries(model_capture ${OpenCV_LIBRARIES}
                                     opencv_rgbd
                                     ${PCL_LIBRARIES}
-                                    /opt/ros/groovy/lib/libg2o_core.so
-                                    /opt/ros/groovy/lib/libg2o_types_slam3d.so
-                                    /opt/ros/groovy/lib/libg2o_types_icp.so
-                                    /opt/ros/groovy/lib/libg2o_stuff.so
+                                    ${libg2o_LIBRARIES}
                                     cholmod
                                     cxsparse
                                     ${CHOLMOD_LIBRARIES}
-                                    ${CSPARSE_LIBRARY} /opt/ros/groovy/lib/libg2o_csparse_extension.so)
+                                    ${CSPARSE_LIBRARY}
+)
+
 set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
