@@ -204,7 +204,7 @@ protected:
             std::cout << std::endl << "*** SRI" << std::endl;
             errors[0][0] = 0.02;
             errors[0][1] = 0.04;
-            errors[1][0] = 0.03;
+            errors[1][0] = 0.02;
             errors[1][1] = 0.04;
             break;
         }
