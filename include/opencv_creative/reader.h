@@ -40,10 +40,17 @@
 
 #include <opencv2/core/core.hpp>
 
-#include <DepthSense.hxx>
+namespace DepthSense
+{
+  class Context;
+  class ColorNode;
+  class DepthNode;
+}
 
 namespace creative
 {
+  class ReaderImpl;
+
   class Reader
   {
   public:
@@ -51,10 +58,7 @@ namespace creative
     {
     }
 
-    ~Reader()
-    {
-      context_.quit();
-    }
+    ~Reader();
 
     /** Start the capture thread. This can be called beforehand to make sure data is synchronized
      * as color is started and the depth node is registered some time after (otherwise, everything crashes)
@@ -66,31 +70,17 @@ namespace creative
      * @return
      */
     static bool
-    isInitialized()
-    {
-      return is_initialized_;
-    }
+    isInitialized();
+
     /** Return the current images
      * @param color
      * @param depth
      */
     static void
     getImages(cv::Mat&color, cv::Mat& depth);
+
   private:
-    static void
-    run();
-    static void
-    onNewColorSample(DepthSense::ColorNode obj, DepthSense::ColorNode::NewSampleReceivedData data);
-    static void
-    onNewDepthSample(DepthSense::DepthNode obj, DepthSense::DepthNode::NewSampleReceivedData data);
-    static bool is_initialized_;
-    static DepthSense::Context context_;
-    static boost::thread thread_;
-    static DepthSense::ColorNode color_node_;
-    static DepthSense::DepthNode depth_node_;
-    static cv::Mat color_;
-    static cv::Mat depth_;
-    static boost::mutex mutex_;
+    static ReaderImpl *impl_;
   };
 }
 
