@@ -93,16 +93,12 @@ namespace creative
       int32_t w, h;
       DepthSense::FrameFormat_toResolution(data.captureConfiguration.frameFormat, &w, &h);
 
-#if 1
       cv::Mat color_yuy2(h, w, CV_8UC2, const_cast<void*>((const void*) (data.colorMap)));
       {
-        boost::mutex::scoped_lock lock(mutex_);
+        boost::unique_lock<boost::mutex> lock(color_mutex_);
         cv::cvtColor(color_yuy2, color_, CV_YUV2RGB_YUY2);
       }
-#else
-      cv::Mat color_bgr(480, 640, CV_8UC3, const_cast<void*>((const void*) (data.colorMap)));
-      cv::cvtColor(color_bgr, color_, CV_BGR2RGB);
-#endif
+      color_cond_.notify_all();
 
       static size_t index = 0;
       // VERY HACKISH: but wait for another N frames (totally arbitrary) before getting a depth node in there
@@ -132,9 +128,10 @@ namespace creative
       DepthSense::FrameFormat_toResolution(data.captureConfiguration.frameFormat, &w, &h);
       cv::Mat depth_single(h, w, CV_16UC1, const_cast<void*>((const void*) (data.depthMap)));
       {
-        boost::mutex::scoped_lock lock(mutex_);
+        boost::unique_lock<boost::mutex> lock(color_mutex_);
         depth_single.copyTo(depth_);
       }
+      depth_cond_.notify_all();
     }
 
     static void
@@ -171,14 +168,18 @@ namespace creative
     getImages(cv::Mat&color, cv::Mat& depth) const
     {
       {
-        boost::mutex::scoped_lock lock(mutex_);
-        color_.copyTo(color);
+        boost::unique_lock<boost::mutex> lock(color_mutex_);
+        color_cond_.wait(lock);
+      }
+      color_.copyTo(color);
+      {
+        boost::unique_lock<boost::mutex> lock(depth_mutex_);
+        depth_cond_.wait(lock);
         depth_.copyTo(depth);
       }
     }
 
     static bool is_initialized_;
-
   private:
     static void
     run()
@@ -192,28 +193,45 @@ namespace creative
     static boost::thread thread_;
     static cv::Mat color_;
     static cv::Mat depth_;
-    static boost::mutex mutex_;
+
+    static boost::mutex color_mutex_;
+    static boost::mutex depth_mutex_;
+    static boost::condition_variable color_cond_;
+    static boost::condition_variable depth_cond_;
   };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   ReaderImpl *Reader::impl_ = new ReaderImpl();
+  size_t Reader::count_ = 0;
   bool ReaderImpl::is_initialized_ = false;
   DepthSense::Context ReaderImpl::context_;
   boost::thread ReaderImpl::thread_;
-  DepthSense::ColorNode ReaderImpl::color_node_ = DepthSense::ColorNode();
-  DepthSense::DepthNode ReaderImpl::depth_node_ = DepthSense::DepthNode();
+  DepthSense::ColorNode ReaderImpl::color_node_;
+  DepthSense::DepthNode ReaderImpl::depth_node_;
   cv::Mat ReaderImpl::color_;
   cv::Mat ReaderImpl::depth_;
-  boost::mutex ReaderImpl::mutex_;
+  boost::mutex ReaderImpl::color_mutex_;
+  boost::mutex ReaderImpl::depth_mutex_;
+  boost::condition_variable ReaderImpl::color_cond_;
+  boost::condition_variable ReaderImpl::depth_cond_;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  Reader::Reader()
+  {
+    ++count_;
+    if (!impl_)
+      impl_ = new ReaderImpl();
+  }
 
   /** Clean all the contexts and unregister the nodes
    */
   Reader::~Reader()
   {
-    delete impl_;
+    --count_;
+    if (count_ == 0)
+      delete impl_;
   }
 
   void

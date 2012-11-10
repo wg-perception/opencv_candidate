@@ -54,9 +54,7 @@ namespace creative
   class Reader
   {
   public:
-    Reader()
-    {
-    }
+    Reader();
 
     ~Reader();
 
@@ -81,6 +79,7 @@ namespace creative
 
   private:
     static ReaderImpl *impl_;
+    static size_t count_;
   };
 }
 
