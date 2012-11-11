@@ -42,13 +42,20 @@
 int
 main(int argc, char ** argv)
 {
+  creative::Reader::setImageTypes(creative::Reader::COLOR + creative::Reader::DEPTH + creative::Reader::POINTS3D);
+
   creative::Reader::initialize();
   cv::namedWindow("color", 0);
   cv::namedWindow("depth", 0);
   while (true)
   {
-    cv::Mat color, depth;
-    creative::Reader::getImages(color, depth);
+    std::vector<cv::Mat> images;
+    creative::Reader::getImages(images);
+    cv::Mat color, depth, points3d;
+    color = images[0];
+    depth = images[1];
+    points3d = images[2];
+    std::cout << points3d.cols;
     if (!color.empty())
       cv::imshow("color", color);
 
@@ -56,7 +63,7 @@ main(int argc, char ** argv)
     {
       cv::Mat visible_depth;
       // 1.5 meter is 255
-      depth.convertTo(visible_depth, CV_8U, 1.5e-3*255);
+      depth.convertTo(visible_depth, CV_8U, 1.5e-3 * 255);
       cv::imshow("depth", visible_depth);
     }
 

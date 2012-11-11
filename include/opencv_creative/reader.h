@@ -54,6 +54,10 @@ namespace creative
   class Reader
   {
   public:
+    enum IMAGE_TYPE
+    {
+      COLOR = 1, DEPTH = 2, POINTS3D = 4
+    };
     Reader();
 
     ~Reader();
@@ -64,18 +68,31 @@ namespace creative
     static void
     initialize();
 
+    /** Set the image types that should be returned by getImages
+     * @param all_images it should be the sum of chosen IMAGE_TYPE
+     */
+    static void
+    setImageTypes(int all_images);
+
+    /** Returns whether the image type image_type is returned when calling getImages
+     * @param image_type
+     * @return
+     */
+    static bool
+    hasImageType(IMAGE_TYPE image_type);
+
     /** Returns the status of the reader
      * @return
      */
     static bool
     isInitialized();
 
-    /** Return the current images
-     * @param color
-     * @param depth
+    /** Return the current images. There is only one interface that retrieves all
+     * images to ensure synchronization
+     * @param images the images that were chosen in setImageTypes will be put in that vector, after clearing it
      */
     static void
-    getImages(cv::Mat&color, cv::Mat& depth);
+    getImages(std::vector<cv::Mat> &images);
 
   private:
     static ReaderImpl *impl_;

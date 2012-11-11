@@ -40,6 +40,8 @@
 
 #include <DepthSense.hxx>
 
+#include <iostream>
+
 namespace creative
 {
   void
@@ -96,28 +98,23 @@ namespace creative
       cv::Mat color_yuy2(h, w, CV_8UC2, const_cast<void*>((const void*) (data.colorMap)));
       {
         boost::unique_lock<boost::mutex> lock(color_mutex_);
-        cv::cvtColor(color_yuy2, color_, CV_YUV2RGB_YUY2);
+        cv::cvtColor(color_yuy2, color_, CV_YUV2BGR_YUY2);
       }
       color_cond_.notify_all();
 
-      static size_t index = 0;
-      // VERY HACKISH: but wait for another N frames (totally arbitrary) before getting a depth node in there
-      if (index == 10)
+      if (image_types_ > 1)
       {
-        // Get depth data
-        context_.requestControl(depth_node_);
-        depth_node_.setEnableDepthMap(true);
-        DepthSense::DepthNode::DepthNode::Configuration depth_configuration(
-            DepthSense::FRAME_FORMAT_QVGA, 30, DepthSense::DepthNode::CAMERA_MODE_CLOSE_MODE, true);
-        depth_node_.setConfiguration(depth_configuration);
-        depth_node_.setConfidenceThreshold(50);
-        context_.releaseControl(depth_node_);
-
-        context_.registerNode(depth_node_);
-        ++index;
+        static size_t index = 0;
+        // VERY HACKISH: but wait for another N frames (totally arbitrary) before getting a depth node in there
+        if (index < 10)
+          ++index;
+        else if (index == 10)
+        {
+          all_nodes_are_up_ = true;
+          context_.registerNode(depth_node_);
+          ++index;
+        }
       }
-      else
-        ++index;
     }
 
     static void
@@ -152,30 +149,80 @@ namespace creative
       color_node_.setConfiguration(color_configuration);
       context_.releaseControl(color_node_);
 
+      // Get depth data
+      context_.requestControl(depth_node_);
+      if (hasImageType(Reader::DEPTH))
+        depth_node_.setEnableDepthMap(true);
+      if (hasImageType(Reader::POINTS3D))
+        depth_node_.setEnableVerticesFloatingPoint(true);
+      DepthSense::DepthNode::DepthNode::Configuration depth_configuration(DepthSense::FRAME_FORMAT_QVGA, 30,
+                                                                          DepthSense::DepthNode::CAMERA_MODE_CLOSE_MODE,
+                                                                          true);
+      depth_node_.setConfiguration(depth_configuration);
+      depth_node_.setConfidenceThreshold(50);
+      context_.releaseControl(depth_node_);
+
       // connect a callback to the newSampleReceived event of the color node
       color_node_.newSampleReceivedEvent().connect(ReaderImpl::onNewColorSample);
       depth_node_.newSampleReceivedEvent().connect(ReaderImpl::onNewDepthSample);
 
-      // Do not connect depth yet as that crashes the driver ...
-      context_.registerNode(color_node_);
+      // If only one node to register, great go ahead
+      if (hasImageType(Reader::COLOR))
+      {
+        context_.registerNode(color_node_);
+        all_nodes_are_up_ = (image_types_ == 1);
+      }
+      else
+      {
+        all_nodes_are_up_ = true;
+        context_.registerNode(depth_node_);
+      }
       context_.startNodes();
 
       // Spawn the thread that will just run
       thread_ = boost::thread(run);
     }
 
-    void
-    getImages(cv::Mat&color, cv::Mat& depth) const
+    static void
+    setImageTypes(int image_types)
     {
+      image_types_ = image_types;
+    }
+
+    static bool
+    hasImageType(Reader::IMAGE_TYPE image_type)
+    {
+      return (image_types_ & image_type);
+    }
+
+    void
+    getImages(std::vector<cv::Mat> &images) const
+    {
+      images.clear();
+      if (hasImageType(Reader::COLOR))
       {
-        boost::unique_lock<boost::mutex> lock(color_mutex_);
-        color_cond_.wait(lock);
+        {
+          boost::unique_lock<boost::mutex> lock(color_mutex_);
+          color_cond_.wait(lock);
+        }
+        images.resize(images.size() + 1);
+        color_.copyTo(images.back());
       }
-      color_.copyTo(color);
+
+      if ((hasImageType(Reader::DEPTH)) || (hasImageType(Reader::POINTS3D)))
       {
         boost::unique_lock<boost::mutex> lock(depth_mutex_);
         depth_cond_.wait(lock);
-        depth_.copyTo(depth);
+        if (hasImageType(Reader::DEPTH))
+        {
+          images.resize(images.size() + 1);
+          depth_.copyTo(images.back());
+        }
+        if (hasImageType(Reader::POINTS3D))
+        {
+          images.resize(images.size() + 1);
+          points3d_.copyTo(images.back());
+        }
       }
     }
 
@@ -191,8 +238,15 @@ namespace creative
     static DepthSense::ColorNode color_node_;
     static DepthSense::DepthNode depth_node_;
     static boost::thread thread_;
-    static cv::Mat color_;
-    static cv::Mat depth_;
+    static cv::Mat_<cv::Vec3b> color_;
+    static cv::Mat_<unsigned short> depth_;
+    static cv::Mat_<cv::Vec3f> points3d_;
+
+    /** Variable indicating whether all the nodes are up and register */
+    static bool all_nodes_are_up_;
+
+    /** a sum of Reader::IMAGE_TYPE declaring what info is retrieved from the nodes */
+    static int image_types_;
 
     static boost::mutex color_mutex_;
     static boost::mutex depth_mutex_;
@@ -209,8 +263,13 @@ namespace creative
   boost::thread ReaderImpl::thread_;
   DepthSense::ColorNode ReaderImpl::color_node_;
   DepthSense::DepthNode ReaderImpl::depth_node_;
-  cv::Mat ReaderImpl::color_;
-  cv::Mat ReaderImpl::depth_;
+  cv::Mat_<cv::Vec3b> ReaderImpl::color_;
+  cv::Mat_<unsigned short> ReaderImpl::depth_;
+  cv::Mat_<cv::Vec3f> ReaderImpl::points3d_;
+
+  bool ReaderImpl::all_nodes_are_up_ = false;
+  int ReaderImpl::image_types_ = 0;
+
   boost::mutex ReaderImpl::color_mutex_;
   boost::mutex ReaderImpl::depth_mutex_;
   boost::condition_variable ReaderImpl::color_cond_;
@@ -240,6 +299,18 @@ namespace creative
     impl_->initialize();
   }
 
+  void
+  Reader::setImageTypes(int all_images)
+  {
+    impl_->setImageTypes(all_images);
+  }
+
+  bool
+  Reader::hasImageType(IMAGE_TYPE image_type)
+  {
+    return impl_->hasImageType(image_type);
+  }
+
   bool
   Reader::isInitialized()
   {
@@ -247,8 +318,8 @@ namespace creative
   }
 
   void
-  Reader::getImages(cv::Mat&color, cv::Mat& depth)
+  Reader::getImages(std::vector<cv::Mat> &images)
   {
-    impl_->getImages(color, depth);
+    impl_->getImages(images);
   }
 }
