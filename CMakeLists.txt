@@ -1,10 +1,20 @@
 cmake_minimum_required(VERSION 2.8)
 project(opencv_candidate)
+
 find_package(catkin REQUIRED)
+find_library(DEPTH_SENSE_LIBRARIES DepthSense /opt/DepthSenseSDK/lib)
+
+if (${DEPTH_SENSE_LIBRARIES} STREQUAL DEPTH_SENSE_LIBRARIES-NOTFOUND)
+  set(OPENCV_CREATIVE "")
+else()
+  set(OPENCV_CREATIVE opencv_creative)
+endif()
+
 if (${catkin_VERSION} VERSION_GREATER "0.5.28")
 catkin_package(DEPENDS opencv2 libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
+                         ${OPENCV_CREATIVE}
                          opencv_rgbd
 )
 else()
@@ -13,6 +23,7 @@ catkin_project(opencv_candidate
                DEPENDS opencv2 libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
+                         ${OPENCV_CREATIVE}
                          opencv_rgbd
 )
 endif()

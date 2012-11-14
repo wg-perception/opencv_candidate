@@ -85,6 +85,10 @@ namespace creative
 
     ~ReaderImpl()
     {
+      context_.stopNodes();
+      while (!context_.getRegisteredNodes().empty()) {
+        context_.unregisterNode(context_.getRegisteredNodes().back());
+      }
       context_.quit();
     }
 
@@ -134,6 +138,9 @@ namespace creative
     static void
     initialize()
     {
+      if (is_initialized_)
+        return;
+
       // create a connection to the DepthSense server at localhost
       context_ = DepthSense::Context::create();
       // get the first available color sensor
@@ -181,6 +188,8 @@ namespace creative
 
       // Spawn the thread that will just run
       thread_ = boost::thread(run);
+
+      is_initialized_ = true;
     }
 
     static void
@@ -237,7 +246,11 @@ namespace creative
     static DepthSense::Context context_;
     static DepthSense::ColorNode color_node_;
     static DepthSense::DepthNode depth_node_;
+
+    /** The thread in which the data will be captured */
     static boost::thread thread_;
+
+    /** The iamges in which to store the different data types */
     static cv::Mat_<cv::Vec3b> color_;
     static cv::Mat_<unsigned short> depth_;
     static cv::Mat_<cv::Vec3f> points3d_;

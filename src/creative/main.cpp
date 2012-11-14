@@ -42,12 +42,14 @@
 int
 main(int argc, char ** argv)
 {
+  cv::VideoWriter video_writer("video.mpg", CV_FOURCC('P', 'I', 'M', '1'), 30, cv::Size(320, 240), false);
+  creative::Reader reader;
   creative::Reader::setImageTypes(creative::Reader::COLOR + creative::Reader::DEPTH + creative::Reader::POINTS3D);
 
   creative::Reader::initialize();
   cv::namedWindow("color", 0);
   cv::namedWindow("depth", 0);
-  while (true)
+  for (size_t index = 0; index < 30*30; ++index)
   {
     std::vector<cv::Mat> images;
     creative::Reader::getImages(images);
@@ -62,8 +64,10 @@ main(int argc, char ** argv)
     if (!depth.empty())
     {
       cv::Mat visible_depth;
-      // 1.5 meter is 255
-      depth.convertTo(visible_depth, CV_8U, 1.5e-3 * 255);
+      // 500mm is 255
+      // 100mm is 0
+      depth.convertTo(visible_depth, CV_8U, 255./400., -100);
+      video_writer << visible_depth;
       cv::imshow("depth", visible_depth);
     }
 
