@@ -742,8 +742,8 @@ namespace cv
     CV_Assert(in_points3d.dims == 2);
     // Either we have 3d points or a depth image
     CV_Assert(
-        ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || (in_points3d.channels()
-            == 1));
+        ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels()
+            == 1) && (in_points3d.depth() == CV_16U)));
     initialize();
 
     // Precompute something for RGBD_NORMALS_METHOD_SRI and RGBD_NORMALS_METHOD_FALS
