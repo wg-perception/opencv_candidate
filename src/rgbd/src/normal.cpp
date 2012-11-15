@@ -655,6 +655,14 @@ namespace cv
       return;
     switch (method_)
     {
+      case RGBD_NORMALS_METHOD_LINEMOD:
+      {
+        if (depth_ == CV_32F)
+          delete reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_);
+        else
+          delete reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_);
+        break;
+      }
       case RGBD_NORMALS_METHOD_SRI:
       {
         if (depth_ == CV_32F)
