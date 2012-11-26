@@ -400,7 +400,7 @@ void preparePyramidNormalsMask(const vector<Mat>& pyramidNormals, const vector<M
                     Vec3f n = normals_row[x];
                     if(cvIsNaN(n[0]))
                     {
-                        CV_DbgAssert(!cvIsNaN(n[1]) && !cvIsNaN(n[2]));
+                        CV_DbgAssert(cvIsNaN(n[1]) && cvIsNaN(n[2]));
                         normalsMask_row[x] = 0;
                     }
                 }
