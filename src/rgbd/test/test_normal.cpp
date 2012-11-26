@@ -194,10 +194,10 @@ protected:
           case 1:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD;
             std::cout << std::endl << "*** LINEMOD" << std::endl;
-            errors[0][0] = 0.16;
-            errors[0][1] = 0.20;
-            errors[1][0] = 0.15;
-            errors[1][1] = 0.15;
+            errors[0][0] = 0.03;
+            errors[0][1] = 0.03;
+            errors[1][0] = 0.012;
+            errors[1][1] = 0.012;
             break;
           case 2:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_SRI;
