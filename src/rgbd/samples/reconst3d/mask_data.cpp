@@ -1,35 +1,30 @@
-#include "model_capture.hpp"
-#include "ocv_pcl_eigen_convert.hpp"
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
-#include "pcl/point_types.h"
+#include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include "pcl/ModelCoefficients.h"
+#include <pcl/ModelCoefficients.h>
 #include <pcl/surface/convex_hull.h>
 #include <pcl/segmentation/extract_polygonal_prism_data.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
 
-//#include <boost/thread/thread.hpp>
-//#include <pcl/visualization/pcl_visualizer.h>
-
-#include <opencv2/core/core.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
-#include <opencv2/rgbd/rgbd.hpp>
-#include <opencv2/highgui/highgui.hpp>
+#include "reconst3d.hpp"
+#include "ocv_pcl_convert.hpp"
 
 using namespace std;
 using namespace cv;
 
 TableMasker::TableMasker() :
-    z_filter_min(DEFAULT_Z_FILTER_MIN()),
-    z_filter_max(DEFAULT_Z_FILTER_MAX()),
-    min_table_part(DEFAULT_MIN_TABLE_PART())
+    zFilterMin(DEFAULT_Z_FILTER_MIN()),
+    zFilterMax(DEFAULT_Z_FILTER_MAX()),
+    minTablePart(DEFAULT_MIN_TABLE_PART())
 {}
 
-bool TableMasker::operator()(const cv::Mat& cloud, const cv::Mat& normals,
-                             cv::Mat& tableWithObjectMask, cv::Mat* _tableMask) const
+bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
+                             Mat& tableWithObjectMask, Mat* objectMask) const
 {
-    const float minTableArea = min_table_part * cloud.total();
+    const float minTableArea = minTablePart * cloud.total();
 
     CV_Assert(!cloud.empty() && cloud.type() == CV_32FC3);
     CV_Assert(!normals.empty() && normals.type() == CV_32FC3);
@@ -104,7 +99,7 @@ bool TableMasker::operator()(const cv::Mat& cloud, const cv::Mat& normals,
     // Get indices of points in the prism
     pcl::PointIndices pclPrismPointsIndices;
     pcl::ExtractPolygonalPrismData<pcl::PointXYZ> pclPrismSegmentator;
-    pclPrismSegmentator.setHeightLimits(z_filter_min, z_filter_max);
+    pclPrismSegmentator.setHeightLimits(zFilterMin, zFilterMax);
     pcl::PointCloud<pcl::PointXYZ> pclCloud;
     cvtCloud_cv2pcl(cloud, Mat(), pclCloud);
     pclPrismSegmentator.setInputCloud(boost::make_shared<const pcl::PointCloud<pcl::PointXYZ> >(pclCloud));
@@ -135,8 +130,8 @@ bool TableMasker::operator()(const cv::Mat& cloud, const cv::Mat& normals,
         }
     }
 
-    if(_tableMask)
-        (*_tableMask) = (planesMask == tableIndex);
+    if(objectMask)
+        (*objectMask) = tableWithObjectMask & ~(planesMask == tableIndex);
 
     return true;
 }

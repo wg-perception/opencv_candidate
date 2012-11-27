@@ -1,4 +1,4 @@
-#include "model_capture.hpp"
+#include "reconst3d.hpp"
 #include <opencv2/core/core.hpp>
 
 // TODO: remove this fix when it'll became available in OpenCV
@@ -32,9 +32,9 @@
 
 CV_INIT_ALGORITHM_FIX(TableMasker, "ModelCapture.TableMasker",
     obj.info()->addParam(obj, "planeComputer", obj.planeComputer);
-    obj.info()->addParam(obj, "z_filter_min", obj.z_filter_min);
-    obj.info()->addParam(obj, "z_filter_max", obj.z_filter_max);
-    obj.info()->addParam(obj, "min_table_part", obj.min_table_part);
+    obj.info()->addParam(obj, "zFilterMin", obj.zFilterMin);
+    obj.info()->addParam(obj, "zFilterMax", obj.zFilterMax);
+    obj.info()->addParam(obj, "minTablePart", obj.minTablePart);
     obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);)
 
 
@@ -50,6 +50,7 @@ CV_INIT_ALGORITHM_FIX(OnlineCaptureServer, "ModelCapture.OnlineCaptureServer",
     obj.info()->addParam(obj, "maxTranslationDiff", obj.maxTranslationDiff);
     obj.info()->addParam(obj, "minRotationDiff", obj.minRotationDiff);
     obj.info()->addParam(obj, "maxRotationDiff", obj.maxRotationDiff);
+    obj.info()->addParam(obj, "isTrajectoryBroken", obj.isTrajectoryBroken);
     obj.info()->addParam(obj, "isInitialied", obj.isInitialied, true);
     obj.info()->addParam(obj, "isFinalized", obj.isFinalized, true);
-    obj.info()->addParam(obj, "isClosed", obj.isClosed, true);)
+    obj.info()->addParam(obj, "isLoopClosed", obj.isLoopClosed, true);)

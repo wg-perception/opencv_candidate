@@ -255,11 +255,28 @@ namespace cv
     double sensor_error_a_, sensor_error_b_, sensor_error_c_;
   };
 
+  /** Object that contains a frame data.
+   */
+  CV_EXPORTS struct RgbdFrame
+  {
+      RgbdFrame();
+      RgbdFrame(const Mat& image, const Mat& depth, const Mat& mask=Mat(), const Mat& normals=Mat(), int ID=-1);
+
+      virtual void
+      release();
+
+      int ID;
+      Mat image;
+      Mat depth;
+      Mat mask;
+      Mat normals;
+  };
+
   /** Object that contains a frame data that is possibly needed for the Odometry.
    * It's used for the efficiency (to pass precomputed/cached data of the frame that participates
    * in the Odometry processing several times).
    */
-  CV_EXPORTS struct OdometryFrameCache
+  CV_EXPORTS struct OdometryFrame : public RgbdFrame
   {
     /** These constants are used to set a type of cache which has to be prepared depending on the frame role:
      * srcFrame or dstFrame (see compute method of the Odometry class). For the srcFrame and dstFrame different cache data may be required,
@@ -273,18 +290,14 @@ namespace cv
       CACHE_SRC = 1, CACHE_DST = 2, CACHE_ALL = CACHE_SRC + CACHE_DST
     };
 
-    OdometryFrameCache();
-    OdometryFrameCache(const Mat& image, const Mat& depth, const Mat& mask, int ID = -1);
-    void
+    OdometryFrame();
+    OdometryFrame(const Mat& image, const Mat& depth, const Mat& mask=Mat(), const Mat& normals=Mat(), int ID=-1);
+
+    virtual void
     release();
+
     void
     releasePyramids();
-
-    int ID;
-    Mat image;
-    Mat depth;
-    Mat mask;
-    Mat normals;
 
     vector<Mat> pyramidImage;
     vector<Mat> pyramidDepth;
@@ -369,7 +382,7 @@ namespace cv
      * It is designed to save on computing the frame data (image pyramids, normals, etc.).
      */
     bool
-    compute(OdometryFrameCache& srcFrame, OdometryFrameCache& dstFrame, Mat& Rt, const Mat& initRt = Mat()) const;
+    compute(Ptr<OdometryFrame>& srcFrame, Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt = Mat()) const;
 
     /** Prepare a cache for the frame. The function checks the precomputed/passed data (throws the error if this data
      * does not satisfy) and computes all remaining cache data needed for the frame. Returned size is a resolution
@@ -378,14 +391,14 @@ namespace cv
      * @param cacheType The cache type: CACHE_SRC, CACHE_DST or CACHE_ALL.
      */
     virtual Size
-    prepareFrameCache(OdometryFrameCache& frame, int cacheType) const = 0;
+    prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
 
   protected:
     virtual void
     checkParams() const = 0;
 
     virtual bool
-    computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt,
+    computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt,
                 const Mat& initRt) const = 0;
   };
 
@@ -411,7 +424,7 @@ namespace cv
                  const vector<float>& minGradientMagnitudes = vector<float>(), int transformType = RIGID_BODY_MOTION);
 
     virtual Size
-    prepareFrameCache(OdometryFrameCache& frame, int cacheType) const;
+    prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
 
     AlgorithmInfo*
     info() const;
@@ -421,7 +434,7 @@ namespace cv
     checkParams() const;
 
     virtual bool
-    computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt,
+    computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt,
                 const Mat& initRt) const;
 
     // Some params have commented desired type. It's due to cv::AlgorithmInfo::addParams does not support it now.
@@ -459,7 +472,7 @@ namespace cv
                 const vector<int>& iterCounts = vector<int>(), int transformType = RIGID_BODY_MOTION);
 
     virtual Size
-    prepareFrameCache(OdometryFrameCache& frame, int cacheType) const;
+    prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
 
     AlgorithmInfo*
     info() const;
@@ -469,7 +482,7 @@ namespace cv
     checkParams() const;
 
     virtual bool
-    computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt,
+    computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt,
                 const Mat& initRt) const;
 
     // Some params have commented desired type. It's due to cv::AlgorithmInfo::addParams does not support it now.
@@ -513,7 +526,7 @@ namespace cv
                     int transformType = RIGID_BODY_MOTION);
 
     virtual Size
-    prepareFrameCache(OdometryFrameCache& frame, int cacheType) const;
+    prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
 
     AlgorithmInfo*
     info() const;
@@ -523,7 +536,7 @@ namespace cv
     checkParams() const;
 
     virtual bool
-    computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt,
+    computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt,
                 const Mat& initRt) const;
 
     // Some params have commented desired type. It's due to cv::AlgorithmInfo::addParams does not support it now.

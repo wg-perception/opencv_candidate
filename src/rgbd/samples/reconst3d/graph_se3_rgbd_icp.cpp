@@ -1,24 +1,11 @@
-#include "model_capture.hpp"
-#include "create_optimizer.hpp"
-#include "ocv_pcl_eigen_convert.hpp"
+#include <g2o/core/factory.h>
+#include <g2o/types/icp/types_icp.h>
 
-#include "g2o/types/slam3d/se3quat.h"
-#include "g2o/types/slam3d/vertex_se3.h"
-#include "g2o/types/slam3d/edge_se3.h"
-#include "g2o/core/block_solver.h"
-#include "g2o/solvers/cholmod/linear_solver_cholmod.h"
-#include "g2o/core/optimization_algorithm_levenberg.h"
-#include "g2o/core/optimization_algorithm_gauss_newton.h"
-#include "g2o/core/robust_kernel_impl.h"
-#include "g2o/core/factory.h"
-#include "g2o/core/optimization_algorithm_factory.h"
+#include <opencv2/imgproc/imgproc.hpp>
 
-#include "g2o/core/sparse_optimizer.h"
-#include "g2o/core/solver.h"
-#include "g2o/types/icp/types_icp.h"
-
-#include "opencv2/core/eigen.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
+#include "reconst3d.hpp"
+#include "ocv_pcl_convert.hpp"
+#include "graph_optimizations.hpp"
 
 using namespace std;
 using namespace cv;
@@ -259,9 +246,8 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
     return correspCount;
 }
 
-void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames,
-                     const std::vector<cv::Mat>& poses, const Mat& cameraMatrix_64F,
-                     int startVertexIndex, bool addVertices)
+void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<OdometryFrame> >& frames,
+                         const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix_64F)
 {
     g2o::Edge_V_V_RGBD::initializeStaticMatrices(); // TODO: make this more correctly
 
@@ -270,12 +256,8 @@ void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::
     const double maxDepthDiff = 0.01;
 
     CV_Assert(frames.size() == poses.size());
-    {
-        vector<Mat> posesExt(poses.size() + 1);
-        copy(poses.begin(), poses.end(), posesExt.begin());
-        *posesExt.rbegin() = (*poses.begin()).inv(DECOMP_SVD) * (*poses.rbegin());
-        fillGraphSE3(optimizer, posesExt, startVertexIndex, addVertices);
-    }
+
+    fillGraphSE3(optimizer, poses, posesLinks);
 
     // set up ICP edges
     for(size_t currFrameIdx = 0; currFrameIdx < frames.size(); currFrameIdx++)
@@ -340,8 +322,8 @@ void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::
 
                     {
                         g2o::Edge_V_V_GICP * e = new g2o::Edge_V_V_GICP();
-                        e->setVertex(0, optimizer->vertex(startVertexIndex + prevFrameIdx));
-                        e->setVertex(1, optimizer->vertex(startVertexIndex + currFrameIdx));
+                        e->setVertex(0, optimizer->vertex(prevFrameIdx));
+                        e->setVertex(1, optimizer->vertex(currFrameIdx));
 
                         g2o::EdgeGICP meas;
                         meas.pos0 = cvtPoint_ocv2egn(prevCloud.at<Point3f>(v1,u1));
@@ -409,9 +391,10 @@ void fillGraphRgbdICPSE3(g2o::SparseOptimizer* optimizer, const std::vector<cv::
     }
 }
 
-void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses,
-                       const cv::Mat& cameraMatrix, float pointsPart,
-                       std::vector<cv::Mat>& refinedPoses)
+void refineSE3RgbdICPPoses(const std::vector<Ptr<RgbdFrame> >& _frames,
+                           const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
+                           const Mat& cameraMatrix, float pointsPart,
+                           std::vector<Mat>& refinedPoses)
 {
     const int iterCount = 5;
     // TODO: find corresp to main API?
@@ -424,10 +407,16 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     odom.set("iterCounts", Mat(iterCounts).clone());
     odom.set("cameraMatrix", cameraMatrix);
 
+    std::vector<Ptr<OdometryFrame> > frames(_frames.size());
     for(size_t i = 0; i < frames.size(); i++)
     {
-        frames[i]->releasePyramids();
-        odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+        Mat gray;
+        CV_Assert(_frames[i]->image.channels() == 3);
+        cvtColor(_frames[i]->image, gray, CV_BGR2GRAY);
+        Ptr<OdometryFrame> frame = new OdometryFrame(gray, _frames[i]->depth, _frames[i]->mask,
+                                                     _frames[i]->normals, _frames[i]->ID);
+        odom.prepareFrameCache(frame, OdometryFrame::CACHE_ALL);
+        frames[i] = frame;
     }
 
     refinedPoses.resize(poses.size());
@@ -444,7 +433,7 @@ void refineRgbdICPSE3Poses(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphRgbdICPSE3(optimizer, frames, refinedPoses, cameraMatrix_64F, 0, true);
+        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F);
 
         optimizer->initializeOptimization();
         const int optIterCount = 1;

@@ -60,6 +60,8 @@ enum
 
 const int sobelSize = 3;
 const double sobelScale = 1./8.;
+int normalWinSize = 5;
+int normalMethod = RgbdNormals::RGBD_NORMALS_METHOD_FALS;
 
 static inline
 void setDefaultIterCounts(Mat& iterCounts)
@@ -788,8 +790,8 @@ bool testDeltaTransformation(const Mat& deltaRt, double maxTranslation, double m
 
 static
 bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
-                         const OdometryFrameCache& srcFrame,
-                         const OdometryFrameCache& dstFrame,
+                         const Ptr<OdometryFrame>& srcFrame,
+                         const Ptr<OdometryFrame>& dstFrame,
                          const cv::Mat& cameraMatrix,
                          float maxDepthDiff, const vector<int>& iterCounts,
                          double maxTranslation, double maxRotation,
@@ -831,8 +833,8 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
         const Mat& levelCameraMatrix = pyramidCameraMatrix[level];
         const Mat& levelCameraMatrix_inv = levelCameraMatrix.inv(DECOMP_SVD);
 
-        const Mat& srcLevelDepth = srcFrame.pyramidDepth[level];
-        const Mat& dstLevelDepth = dstFrame.pyramidDepth[level];
+        const Mat& srcLevelDepth = srcFrame->pyramidDepth[level];
+        const Mat& dstLevelDepth = dstFrame->pyramidDepth[level];
 
         const double fx = levelCameraMatrix.at<double>(0,0);
         const double fy = levelCameraMatrix.at<double>(1,1);
@@ -854,13 +856,13 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
             if(method & RGBD_ODOMETRY)
             {
                 correspsCount_rgbd = computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
-                                                     srcLevelDepth, srcFrame.pyramidMask[level], dstLevelDepth, dstFrame.pyramidTexturedMask[level],
+                                                     srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidTexturedMask[level],
                                                      maxDepthDiff, corresps_rgbd);
             }
 
             if(method & ICP_ODOMETRY)
                 correspsCount_icp = computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
-                                                    srcLevelDepth, srcFrame.pyramidMask[level], dstLevelDepth, dstFrame.pyramidNormalsMask[level],
+                                                    srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidNormalsMask[level],
                                                     maxDepthDiff, corresps_icp);
 
             if(correspsCount_rgbd < transformDim && correspsCount_icp < transformDim)
@@ -869,8 +871,8 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
             Mat AtA(transformDim, transformDim, CV_64FC1, Scalar(0)), AtB(transformDim, 1, CV_64FC1, Scalar(0));
             if(correspsCount_rgbd >= transformDim)
             {
-                calcRgbdLsmMatrices(srcFrame.pyramidImage[level], srcFrame.pyramidCloud[level],
-                                    dstFrame.pyramidImage[level], dstFrame.pyramid_dI_dx[level], dstFrame.pyramid_dI_dy[level],
+                calcRgbdLsmMatrices(srcFrame->pyramidImage[level], srcFrame->pyramidCloud[level],
+                                    dstFrame->pyramidImage[level], dstFrame->pyramid_dI_dx[level], dstFrame->pyramid_dI_dy[level],
                                     corresps_rgbd, correspsCount_rgbd, fx, fy, sobelScale,
                                     A_rgbd, B_rgbd, rgbdEquationFuncPtr, transformDim);
                 AtA += A_rgbd.t() * A_rgbd;
@@ -878,8 +880,8 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
             }
             if(correspsCount_icp >= transformDim)
             {
-                calcICPLsmMatrices(srcFrame.pyramidCloud[level], resultRt,
-                                   dstFrame.pyramidCloud[level], dstFrame.pyramidNormals[level],
+                calcICPLsmMatrices(srcFrame->pyramidCloud[level], resultRt,
+                                   dstFrame->pyramidCloud[level], dstFrame->pyramidNormals[level],
                                    corresps_icp, correspsCount_icp, A_icp, B_icp, icpEquationFuncPtr, transformDim);
                 AtA += A_icp.t() * A_icp;
                 AtB += A_icp.t() * B_icp;
@@ -980,29 +982,36 @@ warpFrameImpl(const cv::Mat& image, const Mat& depth, const Mat& mask,
 namespace cv
 {
 
-OdometryFrameCache::OdometryFrameCache() : ID(-1)
+RgbdFrame::RgbdFrame() : ID(-1)
 {}
 
-OdometryFrameCache::OdometryFrameCache(const Mat& _image, const Mat& _depth, const Mat& _mask, int _ID)
-{
-    ID = _ID;
-    image = _image;
-    depth = _depth;
-    mask = _mask;
-}
+RgbdFrame::RgbdFrame(const Mat& image, const Mat& depth, const Mat& mask, const Mat& normals, int ID)
+    : ID(ID), image(image), depth(depth), mask(mask), normals(normals)
+{}
 
-void OdometryFrameCache::release()
+void RgbdFrame::release()
 {
     ID = -1;
     image.release();
     depth.release();
     mask.release();
     normals.release();
+}
 
+OdometryFrame::OdometryFrame() : RgbdFrame()
+{}
+
+OdometryFrame::OdometryFrame(const Mat& image, const Mat& depth, const Mat& mask, const Mat& normals, int ID)
+    : RgbdFrame(image, depth, mask, normals, ID)
+{}
+
+void OdometryFrame::release()
+{
+    RgbdFrame::release();
     releasePyramids();
 }
 
-void OdometryFrameCache::releasePyramids()
+void OdometryFrame::releasePyramids()
 {
     pyramidImage.clear();
     pyramidDepth.clear();
@@ -1022,23 +1031,31 @@ bool Odometry::compute(const Mat& srcImage, const Mat& srcDepth, const Mat& srcM
                        const Mat& dstImage, const Mat& dstDepth, const Mat& dstMask,
                        Mat& Rt, const Mat& initRt) const
 {
-    OdometryFrameCache srcFrame(srcImage, srcDepth, srcMask);
-    OdometryFrameCache dstFrame(dstImage, dstDepth, dstMask);
+    Ptr<OdometryFrame> srcFrame = new OdometryFrame(srcImage, srcDepth, srcMask);
+    Ptr<OdometryFrame> dstFrame = new OdometryFrame(dstImage, dstDepth, dstMask);
 
     return compute(srcFrame, dstFrame, Rt, initRt);
 }
 
-bool Odometry::compute(OdometryFrameCache& srcFrame, OdometryFrameCache& dstFrame, Mat& Rt, const Mat& initRt) const
+bool Odometry::compute(Ptr<OdometryFrame>& srcFrame, Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
 {
     checkParams();
 
-    Size srcSize = prepareFrameCache(srcFrame, OdometryFrameCache::CACHE_SRC);
-    Size dstSize = prepareFrameCache(dstFrame, OdometryFrameCache::CACHE_DST);
+    Size srcSize = prepareFrameCache(srcFrame, OdometryFrame::CACHE_SRC);
+    Size dstSize = prepareFrameCache(dstFrame, OdometryFrame::CACHE_DST);
 
     if(srcSize != dstSize)
         CV_Error(CV_StsBadSize, "srcFrame and dstFrame have to have the same size (resolution).");
 
     return computeImpl(srcFrame, dstFrame, Rt, initRt);
+}
+
+Size Odometry::prepareFrameCache(Ptr<OdometryFrame> &frame, int /*cacheType*/) const
+{
+    if(frame == 0)
+        CV_Error(CV_StsBadArg, "Null frame pointer.\n");
+
+    return Size();
 }
 
 //
@@ -1073,55 +1090,57 @@ RgbdOdometry::RgbdOdometry(const Mat& _cameraMatrix,
     }
 }
 
-Size RgbdOdometry::prepareFrameCache(OdometryFrameCache& frame, int cacheType) const
+Size RgbdOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const
 {
-    if(frame.image.empty())
+    Odometry::prepareFrameCache(frame, cacheType);
+
+    if(frame->image.empty())
     {
-        if(!frame.pyramidImage.empty())
-            frame.image = frame.pyramidImage[0];
+        if(!frame->pyramidImage.empty())
+            frame->image = frame->pyramidImage[0];
         else
             CV_Error(CV_StsBadSize, "Image or pyramidImage have to be set.");
     }
-    checkImage(frame.image);
+    checkImage(frame->image);
 
-    if(frame.depth.empty())
+    if(frame->depth.empty())
     {
-        if(!frame.pyramidDepth.empty())
-            frame.depth = frame.pyramidDepth[0];
-        else if(!frame.pyramidCloud.empty())
+        if(!frame->pyramidDepth.empty())
+            frame->depth = frame->pyramidDepth[0];
+        else if(!frame->pyramidCloud.empty())
         {
-            Mat cloud = frame.pyramidCloud[0];
+            Mat cloud = frame->pyramidCloud[0];
             vector<Mat> xyz;
             cv::split(cloud, xyz);
-            frame.depth = xyz[2];
+            frame->depth = xyz[2];
         }
         else
             CV_Error(CV_StsBadSize, "Depth or pyramidDepth or pyramidCloud have to be set.");
     }
-    checkDepth(frame.depth, frame.image.size());
+    checkDepth(frame->depth, frame->image.size());
 
-    if(frame.mask.empty() && !frame.pyramidMask.empty())
-        frame.mask = frame.pyramidMask[0];
-    checkMask(frame.mask, frame.image.size());
+    if(frame->mask.empty() && !frame->pyramidMask.empty())
+        frame->mask = frame->pyramidMask[0];
+    checkMask(frame->mask, frame->image.size());
 
-    preparePyramidImage(frame.image, frame.pyramidImage, iterCounts.total());
+    preparePyramidImage(frame->image, frame->pyramidImage, iterCounts.total());
 
-    preparePyramidDepth(frame.depth, frame.pyramidDepth, iterCounts.total());
+    preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame.mask, frame.pyramidDepth, minDepth, maxDepth, frame.pyramidMask);
+    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
 
-    if(cacheType & OdometryFrameCache::CACHE_SRC)
-        preparePyramidCloud(frame.pyramidDepth, cameraMatrix, frame.pyramidCloud);
+    if(cacheType & OdometryFrame::CACHE_SRC)
+        preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
 
-    if(cacheType & OdometryFrameCache::CACHE_DST)
+    if(cacheType & OdometryFrame::CACHE_DST)
     {
-        preparePyramidSobel(frame.pyramidImage, 1, 0, frame.pyramid_dI_dx);
-        preparePyramidSobel(frame.pyramidImage, 0, 1, frame.pyramid_dI_dy);
-        preparePyramidTexturedMask(frame.pyramid_dI_dx, frame.pyramid_dI_dy, minGradientMagnitudes,
-                                   frame.pyramidMask, frame.pyramidTexturedMask);
+        preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
+        preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
+        preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy, minGradientMagnitudes,
+                                   frame->pyramidMask, frame->pyramidTexturedMask);
     }
 
-    return frame.image.size();
+    return frame->image.size();
 }
 
 void RgbdOdometry::checkParams() const
@@ -1130,7 +1149,7 @@ void RgbdOdometry::checkParams() const
     CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
 }
 
-bool RgbdOdometry::computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt, const Mat& initRt) const
+bool RgbdOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
 {
     return RGBDICPOdometryImpl(Rt, initRt, srcFrame, dstFrame, cameraMatrix, maxDepthDiff, iterCounts, maxTranslation, maxRotation, RGBD_ODOMETRY, transformType);
 }
@@ -1157,59 +1176,61 @@ ICPOdometry::ICPOdometry(const Mat& _cameraMatrix,
         setDefaultIterCounts(iterCounts);
 }
 
-Size ICPOdometry::prepareFrameCache(OdometryFrameCache& frame, int cacheType) const
+Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const
 {
-    if(frame.depth.empty())
+    Odometry::prepareFrameCache(frame, cacheType);
+
+    if(frame->depth.empty())
     {
-        if(!frame.pyramidDepth.empty())
-            frame.depth = frame.pyramidDepth[0];
-        else if(!frame.pyramidCloud.empty())
+        if(!frame->pyramidDepth.empty())
+            frame->depth = frame->pyramidDepth[0];
+        else if(!frame->pyramidCloud.empty())
         {
-            Mat cloud = frame.pyramidCloud[0];
+            Mat cloud = frame->pyramidCloud[0];
             vector<Mat> xyz;
             cv::split(cloud, xyz);
-            frame.depth = xyz[2];
+            frame->depth = xyz[2];
         }
         else
             CV_Error(CV_StsBadSize, "Depth or pyramidDepth or pyramidCloud have to be set.");
     }
-    checkDepth(frame.depth, frame.depth.size());
+    checkDepth(frame->depth, frame->depth.size());
 
-    if(frame.mask.empty() && !frame.pyramidMask.empty())
-        frame.mask = frame.pyramidMask[0];
-    checkMask(frame.mask, frame.depth.size());
+    if(frame->mask.empty() && !frame->pyramidMask.empty())
+        frame->mask = frame->pyramidMask[0];
+    checkMask(frame->mask, frame->depth.size());
 
-    preparePyramidDepth(frame.depth, frame.pyramidDepth, iterCounts.total());
+    preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame.mask, frame.pyramidDepth, minDepth, maxDepth, frame.pyramidMask);
+    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
 
-    preparePyramidCloud(frame.pyramidDepth, cameraMatrix, frame.pyramidCloud);
+    preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
 
-    if(cacheType & OdometryFrameCache::CACHE_DST)
+    if(cacheType & OdometryFrame::CACHE_DST)
     {
-        if(frame.normals.empty())
+        if(frame->normals.empty())
         {
-            if(!frame.pyramidNormals.empty())
-                frame.normals = frame.pyramidNormals[0];
+            if(!frame->pyramidNormals.empty())
+                frame->normals = frame->pyramidNormals[0];
             else
             {
                 if(normalsComputer.empty() ||
-                   normalsComputer->get<int>("rows") != frame.depth.rows ||
-                   normalsComputer->get<int>("cols") != frame.depth.cols ||
+                   normalsComputer->get<int>("rows") != frame->depth.rows ||
+                   normalsComputer->get<int>("cols") != frame->depth.cols ||
                    cv::norm(normalsComputer->get<Mat>("K"), cameraMatrix) > FLT_EPSILON)
-                   normalsComputer = new RgbdNormals(frame.depth.rows, frame.depth.cols, frame.depth.depth(), cameraMatrix, 3);
+                   normalsComputer = new RgbdNormals(frame->depth.rows, frame->depth.cols, frame->depth.depth(), cameraMatrix, normalWinSize, normalMethod);
 
-                frame.normals = (*normalsComputer)(frame.pyramidCloud[0]);
+                frame->normals = (*normalsComputer)(frame->pyramidCloud[0]);
             }
         }
-        checkNormals(frame.normals, frame.depth.size());
+        checkNormals(frame->normals, frame->depth.size());
 
-        preparePyramidNormals(frame.normals, frame.pyramidDepth, frame.pyramidNormals);
+        preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
-        preparePyramidNormalsMask(frame.pyramidNormals, frame.pyramidMask, pointsPart, frame.pyramidNormalsMask);
+        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, pointsPart, frame->pyramidNormalsMask);
     }
 
-    return frame.depth.size();
+    return frame->depth.size();
 }
 
 void ICPOdometry::checkParams() const
@@ -1218,7 +1239,7 @@ void ICPOdometry::checkParams() const
     CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
 }
 
-bool ICPOdometry::computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt, const Mat& initRt) const
+bool ICPOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
 {
     return RGBDICPOdometryImpl(Rt, initRt, srcFrame, dstFrame, cameraMatrix, maxDepthDiff, iterCounts, maxTranslation, maxRotation, ICP_ODOMETRY, transformType);
 }
@@ -1251,74 +1272,74 @@ RgbdICPOdometry::RgbdICPOdometry(const Mat& _cameraMatrix,
     }
 }
 
-Size RgbdICPOdometry::prepareFrameCache(OdometryFrameCache& frame, int cacheType) const
+Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const
 {
-    if(frame.image.empty())
+    if(frame->image.empty())
     {
-        if(!frame.pyramidImage.empty())
-            frame.image = frame.pyramidImage[0];
+        if(!frame->pyramidImage.empty())
+            frame->image = frame->pyramidImage[0];
         else
             CV_Error(CV_StsBadSize, "Image or pyramidImage have to be set.");
     }
-    checkImage(frame.image);
+    checkImage(frame->image);
 
-    if(frame.depth.empty())
+    if(frame->depth.empty())
     {
-        if(!frame.pyramidDepth.empty())
-            frame.depth = frame.pyramidDepth[0];
-        else if(!frame.pyramidCloud.empty())
+        if(!frame->pyramidDepth.empty())
+            frame->depth = frame->pyramidDepth[0];
+        else if(!frame->pyramidCloud.empty())
         {
-            Mat cloud = frame.pyramidCloud[0];
+            Mat cloud = frame->pyramidCloud[0];
             vector<Mat> xyz;
             cv::split(cloud, xyz);
-            frame.depth = xyz[2];
+            frame->depth = xyz[2];
         }
         else
             CV_Error(CV_StsBadSize, "Depth or pyramidDepth or pyramidCloud have to be set.");
     }
-    checkDepth(frame.depth, frame.image.size());
+    checkDepth(frame->depth, frame->image.size());
 
-    if(frame.mask.empty() && !frame.pyramidMask.empty())
-        frame.mask = frame.pyramidMask[0];
-    checkMask(frame.mask, frame.image.size());
+    if(frame->mask.empty() && !frame->pyramidMask.empty())
+        frame->mask = frame->pyramidMask[0];
+    checkMask(frame->mask, frame->image.size());
 
-    preparePyramidImage(frame.image, frame.pyramidImage, iterCounts.total());
+    preparePyramidImage(frame->image, frame->pyramidImage, iterCounts.total());
 
-    preparePyramidDepth(frame.depth, frame.pyramidDepth, iterCounts.total());
+    preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame.mask, frame.pyramidDepth, minDepth, maxDepth, frame.pyramidMask);
+    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
 
-    preparePyramidCloud(frame.pyramidDepth, cameraMatrix, frame.pyramidCloud);
+    preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
 
-    if(cacheType & OdometryFrameCache::CACHE_DST)
+    if(cacheType & OdometryFrame::CACHE_DST)
     {
-        preparePyramidSobel(frame.pyramidImage, 1, 0, frame.pyramid_dI_dx);
-        preparePyramidSobel(frame.pyramidImage, 0, 1, frame.pyramid_dI_dy);
-        preparePyramidTexturedMask(frame.pyramid_dI_dx, frame.pyramid_dI_dy,
-                                   minGradientMagnitudes, frame.pyramidMask, frame.pyramidTexturedMask);
-        if(frame.normals.empty())
+        preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
+        preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
+        preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy,
+                                   minGradientMagnitudes, frame->pyramidMask, frame->pyramidTexturedMask);
+        if(frame->normals.empty())
         {
-            if(!frame.pyramidNormals.empty())
-                frame.normals = frame.pyramidNormals[0];
+            if(!frame->pyramidNormals.empty())
+                frame->normals = frame->pyramidNormals[0];
             else
             {
                 if(normalsComputer.empty() ||
-                   normalsComputer->get<int>("rows") != frame.depth.rows ||
-                   normalsComputer->get<int>("cols") != frame.depth.cols ||
+                   normalsComputer->get<int>("rows") != frame->depth.rows ||
+                   normalsComputer->get<int>("cols") != frame->depth.cols ||
                    cv::norm(normalsComputer->get<Mat>("K"), cameraMatrix) > FLT_EPSILON)
-                   normalsComputer = new RgbdNormals(frame.depth.rows, frame.depth.cols, frame.depth.depth(), cameraMatrix, 3);
+                   normalsComputer = new RgbdNormals(frame->depth.rows, frame->depth.cols, frame->depth.depth(), cameraMatrix, normalWinSize, normalMethod);
 
-                frame.normals = (*normalsComputer)(frame.pyramidCloud[0]);
+                frame->normals = (*normalsComputer)(frame->pyramidCloud[0]);
             }
         }
-        checkNormals(frame.normals, frame.depth.size());
+        checkNormals(frame->normals, frame->depth.size());
 
-        preparePyramidNormals(frame.normals, frame.pyramidDepth, frame.pyramidNormals);
+        preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
-        preparePyramidNormalsMask(frame.pyramidNormals, frame.pyramidMask, pointsPart, frame.pyramidNormalsMask);
+        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, pointsPart, frame->pyramidNormalsMask);
     }
 
-    return frame.image.size();
+    return frame->image.size();
 }
 
 void RgbdICPOdometry::checkParams() const
@@ -1328,7 +1349,7 @@ void RgbdICPOdometry::checkParams() const
     CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
 }
 
-bool RgbdICPOdometry::computeImpl(const OdometryFrameCache& srcFrame, const OdometryFrameCache& dstFrame, Mat& Rt, const Mat& initRt) const
+bool RgbdICPOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
 {
     return RGBDICPOdometryImpl(Rt, initRt, srcFrame, dstFrame, cameraMatrix, maxDepthDiff, iterCounts,  maxTranslation, maxRotation, MERGED_ODOMETRY, transformType);
 }

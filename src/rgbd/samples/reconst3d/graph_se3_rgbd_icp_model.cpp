@@ -1,23 +1,11 @@
-#include "model_capture.hpp"
-#include "create_optimizer.hpp"
-#include "ocv_pcl_eigen_convert.hpp"
+#include <g2o/core/factory.h>
+#include <g2o/types/icp/types_icp.h>
 
-#include "g2o/types/slam3d/se3quat.h"
-#include "g2o/types/slam3d/vertex_se3.h"
-#include "g2o/types/slam3d/edge_se3.h"
-#include "g2o/core/block_solver.h"
-#include "g2o/solvers/cholmod/linear_solver_cholmod.h"
-#include "g2o/core/optimization_algorithm_levenberg.h"
-#include "g2o/core/optimization_algorithm_gauss_newton.h"
-#include "g2o/core/robust_kernel_impl.h"
-#include "g2o/core/factory.h"
-#include "g2o/core/optimization_algorithm_factory.h"
+#include <opencv2/imgproc/imgproc.hpp>
 
-#include "g2o/core/sparse_optimizer.h"
-#include "g2o/core/solver.h"
-#include "g2o/types/icp/types_icp.h"
-
-#include "opencv2/core/eigen.hpp"
+#include "reconst3d.hpp"
+#include "ocv_pcl_convert.hpp"
+#include "graph_optimizations.hpp"
 
 using namespace std;
 using namespace cv;
@@ -166,8 +154,9 @@ void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
     }
 }
 
-void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix,
-                           std::vector<cv::Mat>& refinedPoses)
+void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
+                           const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix,
+                           std::vector<Mat>& refinedPoses)
 {
     g2o::Edge_V_V_GICPLandmark::initializeStaticMatrices(); // TODO: make this more correctly
 
@@ -186,11 +175,24 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     odom.set("iterCounts", Mat(iterCounts).clone());
     odom.set("cameraMatrix", cameraMatrix);
 
+    std::vector<Ptr<OdometryFrame> > frames(_frames.size());
+    for(size_t i = 0; i < frames.size(); i++)
+    {
+        //frames[i]->releasePyramids();
+        Mat gray;
+        CV_Assert(_frames[i]->image.channels() == 3);
+        cvtColor(_frames[i]->image, gray, CV_BGR2GRAY);
+        Ptr<OdometryFrame> fr = new OdometryFrame(gray, _frames[i]->depth, _frames[i]->mask,
+                                                  _frames[i]->normals, _frames[i]->ID);
+        odom.prepareFrameCache(fr, OdometryFrame::CACHE_ALL);
+        frames[i] = fr;
+    }
+
     const double maxDepthDiff = 0.002;
     for(size_t i = 0; i < frames.size(); i++)
     {
         frames[i]->releasePyramids();
-        odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+        odom.prepareFrameCache(frames[i], OdometryFrame::CACHE_ALL);
     }
 
     const int iterCount = 3;//7
@@ -205,7 +207,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphRgbdICPSE3(optimizer, frames, refinedPoses, cameraMatrix_64F, 0);
+        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F);
 
         vector<Mat> vertexIndices(frames.size());
         int vertexIdx = optimizer->vertices().size();
@@ -282,7 +284,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                                         frames[curFrameIdx]->image,
                                         frames[prevFrameIdx]->image);
 
-                std::cout << "refineICPSE3Landmarks iter " << iter << "; cur " << curFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
+                std::cout << "landmarks: iter " << iter << "; cur " << curFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
 
                 // poses and edges for points3d
                 for(int v0 = 0; v0 < corresps.rows; v0++)
@@ -421,7 +423,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
             frames[i]->pyramidNormals.clear();
             frames[i]->pyramidCloud.clear();
             frames[i]->pyramidNormalsMask.clear();
-            odom.prepareFrameCache(*frames[i], OdometryFrameCache::CACHE_ALL);
+            odom.prepareFrameCache(frames[i], OdometryFrame::CACHE_ALL);
         }
 
         optimizer->clear();
@@ -433,6 +435,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
     {
         // compute count of correspondences
         Mat& curCloud = frames[curFrameIdx]->pyramidCloud[0];
+        Mat& curDepth = frames[curFrameIdx]->depth;
         Mat correspsCounts = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(0));
         for(size_t prevFrameIdx = 0; prevFrameIdx < frames.size(); prevFrameIdx++)
         {
@@ -449,7 +452,7 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
                                     frames[curFrameIdx]->mask,
                                     frames[prevFrameIdx]->depth,
                                     frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                    maxDepthDiff, corresps,
+                                    0.003, corresps,
                                     frames[curFrameIdx]->pyramidNormals[0],
                                     transformedPrevNormals,
                                     frames[curFrameIdx]->image,
@@ -466,13 +469,25 @@ void refineICPSE3Landmarks(std::vector<cv::Ptr<cv::OdometryFrameCache> >& frames
             }
         }
 
+        //Mat correspsCounts = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(2000));
+
         for(int v0 = 0; v0 < correspsCounts.rows; v0++)
         {
             for(int u0 = 0; u0 < correspsCounts.cols; u0++)
             {
                 if(correspsCounts.at<int>(v0,u0) < minCorrespCount)
+                {
                     curCloud.at<Point3f>(v0,u0) = Point3f(std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN());
+                }
+
+                curDepth.at<float>(v0,u0) = curCloud.at<Point3f>(v0,u0).z;
             }
         }
+    }
+
+    for(size_t i = 0; i < frames.size(); i++)
+    {
+        Ptr<RgbdFrame> fr = new RgbdFrame(_frames[i]->image, frames[i]->depth, _frames[i]->mask, frames[i]->normals, _frames[i]->ID);
+        _frames[i] = fr;
     }
 }

@@ -1,16 +1,49 @@
-#include "model_capture/model_capture.hpp"
-#include "opencv2/core/core.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
+#include <iostream>
+
+#include "reconst3d/reconst3d.hpp"
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
 
 using namespace std;
 using namespace cv;
 
+static Mat defaultCameraMatrix()
+{
+    float vals[] = {525., 0., 3.1950000000000000e+02,
+                    0., 525., 2.3950000000000000e+02,
+                    0., 0., 1.};
+    return Mat(3,3,CV_32FC1,vals).clone();
+}
+
+static void releaseUnusedFrames(const Ptr<TrajectoryFrames>& keyframesData, vector<Mat>& images, vector<Mat>& depthes)
+{
+    for(size_t imageIndex = 0; imageIndex < images.size(); imageIndex++)
+    {
+        bool isKeyframe = false;
+        for(size_t keyframeIndex = 0; keyframeIndex < keyframesData->frames.size(); keyframeIndex++)
+        {
+            if(keyframesData->frames[keyframeIndex]->ID == static_cast<int>(imageIndex))
+            {
+                isKeyframe = true;
+                break;
+            }
+        }
+        if(!isKeyframe)
+        {
+            images[imageIndex].release();
+            depthes[imageIndex].release();
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
-    if(argc != 2)
+    if(argc != 2  && argc != 3)
     {
-        cout << "Format: " << argv[0] << " dirname " << endl;
-        cout << "   dirname - a path to the directory with TOD-like base." << endl;
+        cout << "Format: " << argv[0] << " train_dirname [model_filename]" << endl;
+        cout << "   train_dirname - a path to the directory with TOD-like training base." << endl;
+        cout << "   model_filename - an optional parameter, it's a filename that will be used to save trained model." << endl;
         return -1;
     }
 
@@ -24,72 +57,31 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    float vals[] = {525., 0., 3.1950000000000000e+02,
-                    0., 525., 2.3950000000000000e+02,
-                    0., 0., 1.};
-    Mat cameraMatrix = Mat(3,3,CV_32FC1,vals).clone();
+    Mat cameraMatrix = defaultCameraMatrix();
 
     OnlineCaptureServer onlineCaptureServer;
     onlineCaptureServer.set("cameraMatrix", cameraMatrix);
-
     CV_Assert(!bgrImages[0].empty());
-
     onlineCaptureServer.initialize(bgrImages[0].size());
     for(size_t i = 0; i < bgrImages.size(); i++)
-    {
-        Mat gray;
-        cvtColor(bgrImages[i], gray, CV_BGR2GRAY);
-        onlineCaptureServer.push(gray, depthes[i], i);
-    }
-    Ptr<KeyframesData> keyframesData = onlineCaptureServer.finalize();
+        onlineCaptureServer.push(bgrImages[i], depthes[i], i);
 
-#if 0
-    for(size_t i = 0; i < frames.size(); i++)
-    {
-        if(find(indicesToBgrImages.begin(), indicesToBgrImages.end(), i) == indicesToBgrImages.end())
-        {
-            frames[i].release();
-            bgrImages[i].release();
-            depthes[i].release();
-        }
-    }
-#endif
-
-    cout << "Frame-to-frame odometry result" << endl;
-    showModel(bgrImages, keyframesData->frames, keyframesData->poses, cameraMatrix, 0.005);
-
-    vector<Mat> refinedPosesSE3;
-    refineSE3Poses(keyframesData->poses, refinedPosesSE3);
-
-    cout << "Result of the loop closure" << endl;
-    showModel(bgrImages, keyframesData->frames, refinedPosesSE3, cameraMatrix, 0.003);
-
-    vector<Mat> refinedPosesICPSE3;
-    float pointsPart = 0.05f;
-    refineRgbdICPSE3Poses(keyframesData->frames, refinedPosesSE3, cameraMatrix, pointsPart, refinedPosesICPSE3);
-
-    cout << "Result of RgbdICP for camera poses" << endl;
-    float modelVoxelSize = 0.003f;
-    showModel(bgrImages, keyframesData->frames, refinedPosesICPSE3, cameraMatrix, modelVoxelSize);
+    Ptr<TrajectoryFrames> trajectoryFrames = onlineCaptureServer.finalize();
+    if(!onlineCaptureServer.get<bool>("isLoopClosed"))
+        return -1;
 
 #if 1
-    // remove table from the further refinement
-    for(size_t i = 0; i < keyframesData->frames.size(); i++)
-    {
-        keyframesData->frames[i]->mask &= ~keyframesData->tableMasks[i];
-        keyframesData->frames[i]->releasePyramids();
-    }
-    pointsPart = 1.f;
-    modelVoxelSize = 0.001;
+    releaseUnusedFrames(trajectoryFrames, bgrImages, depthes);
 #endif
 
-    vector<Mat> refinedPosesICPSE3Landmarks;
-    refineICPSE3Landmarks(keyframesData->frames, refinedPosesICPSE3, cameraMatrix, refinedPosesICPSE3Landmarks);
+    ModelReconstructor reconstructor;
+    Ptr<ObjectModel> model;
+    reconstructor.reconstruct(trajectoryFrames, cameraMatrix, model);
 
-    cout << "Result of RgbdICP for camera poses and moving the model points" << endl;
-    modelVoxelSize = 0.000001;
-    showModel(bgrImages, keyframesData->frames, refinedPosesICPSE3Landmarks, cameraMatrix, modelVoxelSize);
-//    showModelWithNormals(bgrImages, keyframesData->frame, refinedPosesICPSE3Landmarks, cameraMatrix);
+    if(argc == 3)
+        model->write_ply(argv[2]);
+
+    //model->show();
 
     return 0;
 }

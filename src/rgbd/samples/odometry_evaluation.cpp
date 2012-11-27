@@ -144,8 +144,8 @@ int main(int argc, char** argv)
         cameraMatrix.at<float>(1,2) = cy;
     }
 
-    Ptr<OdometryFrameCache> frame_prev = new OdometryFrameCache(),
-                           frame_curr = new OdometryFrameCache();
+    Ptr<OdometryFrame> frame_prev = new OdometryFrame(),
+                           frame_curr = new OdometryFrame();
     Ptr<Odometry> odometry = Algorithm::create<Odometry>("RGBD." + string(argv[3]) + "Odometry");
     if(odometry.empty())
     {
@@ -216,7 +216,7 @@ int main(int argc, char** argv)
                 TickMeter tm;
                 tm.start();
                 gtm.start();
-                bool res = odometry->compute(*frame_curr, *frame_prev, Rt);
+                bool res = odometry->compute(frame_curr, frame_prev, Rt);
                 gtm.stop();
                 tm.stop();
                 count++;

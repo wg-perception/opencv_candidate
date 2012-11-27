@@ -1,18 +1,37 @@
-#include "model_capture.hpp"
+#include <iostream>
 
-#include <opencv2/calib3d/calib3d.hpp>
-#include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+
+#include "reconst3d.hpp"
 
 using namespace std;
 using namespace cv;
 
 const char checkDataMessage[] = "Please check the data! Sequential frames have to be close to each other (location and color). "
                                 "The first and one of the last frames also have to be "
-                                "really taken from close camera positions and the lighting has to be the same.";
+                                "really taken from close camera positions and the close lighting conditions.";
+
+// get norms
+//
+static inline
+float tvecNorm(const Mat& Rt)
+{
+    return norm(Rt(Rect(3,0,1,3)));
+}
+
+static inline
+float rvecNormDegrees(const Mat& Rt)
+{
+    Mat rvec;
+    Rodrigues(Rt(Rect(0,0,3,3)), rvec);
+    return norm(rvec) * 180. / CV_PI;
+}
+
+//
 static
-float computeInliersRatio(const Ptr<OdometryFrameCache>& srcFrame,
-                          const Ptr<OdometryFrameCache>& dstFrame,
+float computeInliersRatio(const Ptr<OdometryFrame>& srcFrame,
+                          const Ptr<OdometryFrame>& dstFrame,
                           const Mat& Rt, const Mat& cameraMatrix,
                           int maxColorDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_COLOR_DIFF,
                           float maxDepthDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_DEPTH_DIFF())
@@ -25,22 +44,39 @@ float computeInliersRatio(const Ptr<OdometryFrameCache>& srcFrame,
                                     (cv::abs(dstFrame->image - warpedSrcImage) < maxColorDiff) &
                                     (cv::abs(dstFrame->depth - warpedSrcDepth) < maxDepthDiff));
 
-#if 0
-    cout << "inliersRatio " << static_cast<float>(inliersCount) / countNonZero(dstFrame->mask) << endl;
-
-    imshow("src_image", srcFrame->image);
-    imshow("dst_image", dstFrame->image);
-    imshow("warped_image", warpedSrcImage);
-    imshow("diff_image", abs(dstFrame->image - warpedSrcImage));
-    //imshow("src_mask", srcFrame->mask);
-    //imshow("dst_mask", dstFrame->mask);
-    //imshow("warped_mask", warpedSrcMask);
-    waitKey();
-#endif
-
     int intersectSize = countNonZero(dstFrame->mask & warpedSrcMask);
     return intersectSize ? static_cast<float>(inliersCount) / intersectSize : 0;
 }
+
+//---------------------------------------------------------------------------------------------------------------------------
+PosesLink::PosesLink(int srcIndex, int dstIndex, const Mat& Rt)
+    : srcIndex(srcIndex), dstIndex(dstIndex), Rt(Rt)
+{}
+
+void TrajectoryFrames::push(const Ptr<RgbdFrame>& frame, const Mat& pose, const Mat& objectMask, int state)
+{
+    CV_Assert(frame);
+    CV_Assert(!pose.empty() && pose.size() == Size(4,4) && pose.type() == CV_64FC1);
+
+    Ptr<RgbdFrame> rgbdFrame = new RgbdFrame();
+    *rgbdFrame = *frame;
+    frames.push_back(rgbdFrame);
+    poses.push_back(pose);
+    objectMasks.push_back(objectMask);
+    states.push_back(state);
+}
+
+void TrajectoryFrames::clear()
+{
+    frames.clear();
+    poses.clear();
+    states.clear();
+    posesLinks.clear();
+}
+
+OnlineCaptureServer::FramePushOutput::FramePushOutput()
+    : state(0)
+{}
 
 OnlineCaptureServer::OnlineCaptureServer() :
     maxCorrespColorDiff(DEFAULT_MAX_CORRESP_COLOR_DIFF),
@@ -66,13 +102,10 @@ void OnlineCaptureServer::firterDepth(const Mat& src, Mat& dst) const
     dst = src; // TODO maybe bilateral
 }
 
-bool OnlineCaptureServer::isLoopClosed() const
+Ptr<OnlineCaptureServer::FramePushOutput> OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
 {
-  return isClosed;
-}
+    Ptr<FramePushOutput> pushOutput = new FramePushOutput();
 
-Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID, bool *isKeyframePtr)
-{
     CV_Assert(isInitialied);
     CV_Assert(!isFinalized);
 
@@ -80,24 +113,28 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID,
     CV_Assert(!tableMasker.empty());
     CV_Assert(!odometry.empty());
 
-    if(isClosed)
+    if(isTrajectoryBroken)
     {
-        cout << "Frame " << frameID << ". Loop is already closed. Keyframes count " << keyframesData->frames.size() << endl;
-        return Mat();
+        cout << "Frame " << frameID << ". Trajectory was broken starting from keyframe " << (*trajectoryFrames->frames.rbegin())->ID << "." << endl;
+        return pushOutput;
+    }
+
+    if(isLoopClosed)
+    {
+        cout << "Frame " << frameID << ". Loop is already closed. Keyframes count " << trajectoryFrames->frames.size() << endl;
+        return pushOutput;
     }
 
     if(_image.empty() || _depth.empty())
     {
         cout << "Warning: Empty frame " << frameID << endl;
-        return Mat();
+        return pushOutput;
     }
 
     //color information is ingored now but can be used in future
     Mat _grayImage = _image;
     if (_image.channels() == 3)
-    {
-      cvtColor(_image, _grayImage, CV_BGR2GRAY);
-    }
+        cvtColor(_image, _grayImage, CV_BGR2GRAY);
 
     CV_Assert(_grayImage.type() == CV_8UC1);
     CV_Assert(_depth.type() == CV_32FC1);
@@ -112,22 +149,23 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID,
 
     Mat normals = (*normalsComputer)(cloud);
 
-    Mat tableWithObjectMask, tableMask;
-    if(!(*tableMasker)(cloud, normals, tableWithObjectMask, &tableMask))
+    Mat tableWithObjectMask;
+    bool isTableMaskOk = (*tableMasker)(cloud, normals, tableWithObjectMask, &pushOutput->objectMask);
+    pushOutput->frame = new OdometryFrame(_grayImage, _depth, tableWithObjectMask, normals, frameID);
+    if(!isTableMaskOk)
     {
         cout << "Warning: bad table mask for the frame " << frameID << endl;
-        return Mat();
+        return pushOutput;
     }
 
-    Ptr<OdometryFrameCache> currFrame = new OdometryFrameCache(image, depth, tableWithObjectMask);
+    //Ptr<OdometryFrameCache> currFrame = new OdometryFrameCache(image, depth, tableWithObjectMask);
+    Ptr<OdometryFrame> currFrame = pushOutput->frame;
 
-    Mat pose;
-    bool isKeyframe = false;
     if(lastKeyframe.empty())
     {
         firstKeyframe = currFrame;
-        pose = Mat::eye(4,4,CV_64FC1);
-        isKeyframe = true;
+        pushOutput->state |= TrajectoryFrames::KEYFRAME;
+        pushOutput->pose = Mat::eye(4,4,CV_64FC1);
         cout << "First keyframe ID " << frameID << endl;
     }
     else
@@ -136,36 +174,41 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID,
         {
             Mat Rt;
             cout << "odometry " << frameID << " -> " << prevFrameID << endl;
-            if(!odometry->compute(*currFrame, *prevFrame, Rt) ||
-               computeInliersRatio(currFrame, prevFrame, Rt, cameraMatrix, maxCorrespColorDiff, maxCorrespDepthDiff) < minInliersRatio)
+            if(odometry->compute(currFrame, prevFrame, Rt) && computeInliersRatio(currFrame, prevFrame, Rt, cameraMatrix, maxCorrespColorDiff,
+                                                                                  maxCorrespDepthDiff) >= minInliersRatio)
+            {
+                pushOutput->state |= TrajectoryFrames::VALIDFRAME;
+            }
+
+            pushOutput->pose = prevPose * Rt;
+            if(!(pushOutput->state & TrajectoryFrames::VALIDFRAME))
             {
                 cout << "Warning: Bad odometry (too far motion or low inliers ratio) " << frameID << "->" << prevFrameID << endl;
-                return Mat();
+                return pushOutput;
             }
-            pose = prevPose * Rt;
         }
 
         // check for the current frame: is it keyframe?
         {
-            Mat Rt = (*keyframesData->poses.rbegin()).inv(DECOMP_SVD) * pose;
-
+            Mat Rt = (*trajectoryFrames->poses.rbegin()).inv(DECOMP_SVD) * pushOutput->pose;
             float tnorm = tvecNorm(Rt);
             float rnorm = rvecNormDegrees(Rt);
 
             if(tnorm > maxTranslationDiff || rnorm > maxRotationDiff)
             {
-                cout << "Camera trajectory is broken (starting from " << (*keyframesData->frames.rbegin())->ID << " frame)." << endl;
+                cout << "Camera trajectory is broken (starting from " << (*trajectoryFrames->frames.rbegin())->ID << " frame)." << endl;
                 cout << checkDataMessage << endl;
-                return Mat();
+                isTrajectoryBroken = true;
+                return pushOutput;
             }
 
             if((tnorm >= minTranslationDiff || rnorm >= minRotationDiff)) // we don't check inliers ratio here because it was done by frame-to-frame above
             {
                 translationSum += tnorm;
-                if(isClosing)
+                if(isLoopClosing)
                     cout << "possible ";
                 cout << "keyframe ID " << frameID << endl;
-                isKeyframe = true;
+                pushOutput->state |= TrajectoryFrames::KEYFRAME;
             }
         }
 
@@ -173,7 +216,7 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID,
         if(translationSum > skippedTranslation) // ready for closure
         {
             Mat Rt;
-            if(odometry->compute(*currFrame, *firstKeyframe, Rt))
+            if(odometry->compute(currFrame, firstKeyframe, Rt))
             {
                 // we check inliers ratio for the loop closure frames because we didn't do this before
                 float inliersRatio = computeInliersRatio(currFrame, firstKeyframe, Rt, cameraMatrix, maxCorrespColorDiff, maxCorrespDepthDiff);
@@ -181,57 +224,50 @@ Mat OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID,
                 {
                     if(inliersRatio >= closureInliersRatio)
                     {
-                        isClosing = true;
+                        isLoopClosing = true;
                         closureInliersRatio = inliersRatio;
                         closureFrame = currFrame;
                         closureFrameID = frameID;
                         closurePoseWithFirst = Rt;
-                        closurePose = pose;
-                        closureTableMask = tableMask;
-                        isClosureFrameAdded = isKeyframe;
+                        closurePose = pushOutput->pose;
+                        closureObjectMask = pushOutput->objectMask;
+                        closureBgrImage = _image;
+                        isClosureFrameAdded = pushOutput->state == TrajectoryFrames::KEYFRAME;
                     }
-                    else if(isClosing)
+                    else if(isLoopClosing)
                     {
-                        isClosed = true;
+                        isLoopClosed = true;
                     }
                 }
-                else if(isClosing)
+                else if(isLoopClosing)
                 {
-                    isClosed = true;
+                    isLoopClosed = true;
                 }
             }
-            else if(isClosing)
+            else if(isLoopClosing)
             {
-                isClosed = true;
+                isLoopClosed = true;
             }
         }
     }
 
-    if(isKeyframe && (!isClosed || frameID <= closureFrameID ))
+    if((pushOutput->state == TrajectoryFrames::KEYFRAME) && (!isLoopClosed || frameID <= closureFrameID ))
     {
-        Ptr<OdometryFrameCache> frame = new OdometryFrameCache(currFrame->image, currFrame->depth, tableWithObjectMask, frameID);
-        keyframesData->frames.push_back(frame);
-        keyframesData->tableMasks.push_back(tableMask);
-        keyframesData->poses.push_back(pose);
-
+        trajectoryFrames->push(new RgbdFrame(_image, _depth, currFrame->mask, currFrame->normals, frameID),
+                               pushOutput->pose, pushOutput->objectMask, TrajectoryFrames::KEYFRAME);
         lastKeyframe = currFrame;
-    }
-
-    if (isKeyframePtr != 0)
-    {
-      *isKeyframePtr = isKeyframe;
     }
 
     prevFrame = currFrame;
     prevFrameID = frameID;
-    prevPose = pose.clone();
+    prevPose = pushOutput->pose.clone();
 
-    return pose.clone();
+    return pushOutput;
 }
 
 void OnlineCaptureServer::reset()
 {
-    keyframesData = new KeyframesData();
+    trajectoryFrames = new TrajectoryFrames();
 
     firstKeyframe.release();
     lastKeyframe.release();
@@ -241,21 +277,27 @@ void OnlineCaptureServer::reset()
     prevPose.release();
     prevFrameID = -1;
 
-    isClosing = false;
-    isClosed = false;
+    isTrajectoryBroken = false;
+    isLoopClosing = false;
+    isLoopClosed = false;
     translationSum = 0.;
     closureInliersRatio = 0.;
     closureFrameID = -1;
-    closureTableMask.release();
     isClosureFrameAdded = false;
+
+    closureBgrImage.release();
+    closureObjectMask.release();
     closurePose.release();
     closurePoseWithFirst.release();
 
     isFinalized = false;
 }
 
-void OnlineCaptureServer::initialize(const Size& frameResolution)
+void OnlineCaptureServer::initialize(const Size& frameResolution, int storeFramesWithState)
 {
+    if(storeFramesWithState != TrajectoryFrames::KEYFRAME)
+        CV_Error(CV_StsError, "TODO: add a support of storing all valid frames. Now only keyframes are supported (have to modified push method)!!!\n");
+
     reset();
 
     CV_Assert(!cameraMatrix.empty());
@@ -279,35 +321,38 @@ void OnlineCaptureServer::initialize(const Size& frameResolution)
     isInitialied = true;
 }
 
-cv::Ptr<KeyframesData> OnlineCaptureServer::finalize()
+Ptr<TrajectoryFrames> OnlineCaptureServer::finalize()
 {
     CV_Assert(isInitialied);
     CV_Assert(!isFinalized);
 
     if(!closureFrame.empty())
     {
-        CV_Assert((*keyframesData->frames.rbegin())->ID <= closureFrameID);
+    	cout << "Closure frame index " << closureFrame->ID << endl;
+        CV_Assert((*trajectoryFrames->frames.rbegin())->ID <= closureFrameID);
         if(!isClosureFrameAdded)
-        {
-            Ptr<OdometryFrameCache> frame = new OdometryFrameCache(closureFrame->image, closureFrame->depth, closureFrame->mask, closureFrameID);
-            keyframesData->frames.push_back(frame);
-            keyframesData->tableMasks.push_back(closureTableMask);
-            keyframesData->poses.push_back(closurePose);
-        }
-        keyframesData->poses.push_back(closurePoseWithFirst);
+            trajectoryFrames->push(new RgbdFrame(closureBgrImage, closureFrame->depth, closureFrame->mask, closureFrame->normals, closureFrameID),
+                                   closurePose, closureObjectMask, TrajectoryFrames::KEYFRAME);
+
+        // fill camera poses links
+        trajectoryFrames->posesLinks.clear();
+        for(size_t i = 1; i < trajectoryFrames->frames.size(); i++)
+            trajectoryFrames->posesLinks.push_back(PosesLink(i-1, i));
+        trajectoryFrames->posesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst));
 
         cout << "Last keyframe index " << closureFrameID << endl;
-        cout << "keyframes count = " << keyframesData->frames.size() << endl;
+        cout << "keyframes count = " << trajectoryFrames->frames.size() << endl;
 
-        isClosed = true;
+        isLoopClosed = true;
     }
     else
     {
+
         cout << "The algorithm can not make loop closure on given data. " << endl;
         cout << checkDataMessage << endl;
     }
 
     isFinalized = true;
 
-    return keyframesData;
+    return trajectoryFrames;
 }

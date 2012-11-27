@@ -1,16 +1,17 @@
-#include "model_capture.hpp"
+#include <dirent.h>
+#include <iostream>
+#include <fstream>
+#include <algorithm>
 
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include <dirent.h>
-#include <fstream>
-#include <algorithm>
+#include "reconst3d.hpp"
 
 using namespace std;
 using namespace cv;
 
-void readDirectory(const string& directoryName, vector<string>& filenames, bool addDirectoryName)
+static void readDirectory(const string& directoryName, vector<string>& filenames, bool addDirectoryName)
 {
     filenames.clear();
 

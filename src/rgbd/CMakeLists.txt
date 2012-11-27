@@ -59,18 +59,24 @@ find_package(libg2o)
 
 include_directories(SYSTEM ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
 
-add_executable(model_capture samples/model_capture.cpp
-                             samples/model_capture/model_capture.hpp
-                             samples/model_capture/model_capture_init.cpp
-                             samples/model_capture/ocv_pcl_eigen_convert.hpp
-                             samples/model_capture/create_optimizer.hpp
-                             samples/model_capture/load_data.cpp
-                             samples/model_capture/mask_data.cpp
-                             samples/model_capture/frame_to_frame.cpp
-                             samples/model_capture/graph_se3.cpp
-                             samples/model_capture/graph_se3_rgbd_icp.cpp
-                             samples/model_capture/graph_se3_landmarks.cpp
-                             samples/model_capture/show_model.cpp
+add_executable(model_capture samples/reconst3d/reconst3d.hpp
+                             samples/reconst3d/reconst3d_init.cpp
+
+                             samples/reconst3d/graph_optimizations.hpp
+                             samples/reconst3d/ocv_pcl_convert.hpp
+
+                             samples/reconst3d/capture.cpp
+                             samples/reconst3d/reconstruction.cpp
+                             samples/reconst3d/model.cpp
+
+                             samples/reconst3d/load_data.cpp
+                             samples/reconst3d/mask_data.cpp
+
+                             samples/reconst3d/graph_se3.cpp
+                             samples/reconst3d/graph_se3_rgbd_icp.cpp
+                             samples/reconst3d/graph_se3_rgbd_icp_model.cpp
+
+                             samples/model_capture.cpp
               )
 target_link_libraries(model_capture ${OpenCV_LIBRARIES}
                                     opencv_rgbd
