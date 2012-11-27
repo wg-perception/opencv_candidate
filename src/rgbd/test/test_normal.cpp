@@ -188,16 +188,16 @@ protected:
             std::cout << std::endl << "*** FALS" << std::endl;
             errors[0][0] = 0.006;
             errors[0][1] = 0.03;
-            errors[1][0] = 0.0002;
+            errors[1][0] = 0.00008;
             errors[1][1] = 0.02;
             break;
           case 1:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD;
             std::cout << std::endl << "*** LINEMOD" << std::endl;
             errors[0][0] = 0.03;
-            errors[0][1] = 0.03;
-            errors[1][0] = 0.012;
-            errors[1][1] = 0.012;
+            errors[0][1] = 0.05;
+            errors[1][0] = 0.05;
+            errors[1][1] = 0.05;
             break;
           case 2:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_SRI;
@@ -224,18 +224,25 @@ protected:
           cv::Mat points3d, ground_normals;
           // 1 plane, continuous scene, very low error..
           std::cout << "1 plane" << std::endl;
+          float err_mean = 0;
           for (int ii = 0; ii < 5; ++ii)
           {
             gen_points_3d(plane_params, plane_mask, points3d, ground_normals, 1);
-            testit(points3d, ground_normals, normals_computer, errors[j][0]);
+            err_mean += testit(points3d, ground_normals, normals_computer);
           }
+          std::cout << "mean diff: " << (err_mean / 5) << std::endl;
+          EXPECT_LE(err_mean/5, errors[j][0])<< " thresh: " << errors[j][0] << std::endl;
+
           // 3 discontinuities, more error expected.
           std::cout << "3 planes" << std::endl;
+          err_mean = 0;
           for (int ii = 0; ii < 5; ++ii)
           {
             gen_points_3d(plane_params, plane_mask, points3d, ground_normals, 3);
-            testit(points3d, ground_normals, normals_computer, errors[j][1]);
+            err_mean += testit(points3d, ground_normals, normals_computer);
           }
+          std::cout << "mean diff: " << (err_mean / 5) << std::endl;
+          EXPECT_LE(err_mean/5, errors[j][1])<< "mean diff: " << (err_mean/5) << " thresh: " << errors[j][1] << std::endl;
         }
       }
 
@@ -248,9 +255,8 @@ protected:
     ts->set_failed_test_info(cvtest::TS::OK);
   }
 
-  void
-  testit(const cv::Mat & points3d, const cv::Mat & in_ground_normals, const cv::RgbdNormals & normals_computer,
-         float thresh)
+  float
+  testit(const cv::Mat & points3d, const cv::Mat & in_ground_normals, const cv::RgbdNormals & normals_computer)
   {
     cv::TickMeter tm;
     tm.start();
@@ -286,8 +292,8 @@ protected:
       }
 
     err /= normals.rows * normals.cols;
-    ASSERT_LE(err, thresh) << "mean diff: " << err << " thresh: " << thresh << std::endl;
     std::cout << "Average error: " << err << " Speed: " << tm.getTimeMilli() << " ms" << std::endl;
+    return err;
   }
 };
 

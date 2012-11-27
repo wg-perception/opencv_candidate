@@ -184,9 +184,6 @@ namespace
     virtual void
     cache()=0;
 
-    virtual cv::Mat
-    compute(const cv::Mat & points3d, const cv::Mat &r) const=0;
-
     bool
     validate(int rows, int cols, int depth, const cv::Mat &K_ori, int window_size, int method) const
     {
@@ -310,6 +307,7 @@ namespace
 
       return normals;
     }
+
   private:
     cv::Mat_<Vec3T> V_;
     cv::Mat_<Vec9T> M_inv_;
@@ -326,9 +324,9 @@ namespace
  * @param c
  * @param res
  */
-template<typename T>
+template<typename T, typename U>
 void
-multiply_by_K_inv(const cv::Matx<T, 3, 3> & K_inv, long a, long b, long c, cv::Vec<T, 3> &res)
+multiply_by_K_inv(const cv::Matx<T, 3, 3> & K_inv, U a, U b, U c, cv::Vec<T, 3> &res)
 {
   res[0] = K_inv(0, 0) * a + K_inv(0, 1) * b + K_inv(0, 2) * c;
   res[1] = K_inv(1, 1) * b + K_inv(1, 2) * c;
@@ -367,19 +365,40 @@ namespace
      * @return
      */
     cv::Mat
-    compute(const cv::Mat& depth_in, const cv::Mat &r) const
+    compute(const cv::Mat& depth_in) const
     {
-      // TODO, deal with float/double depth
-      const cv::Mat_<unsigned short> &depth(depth_in);
-      return compute(depth);
+      switch (depth_in.depth())
+      {
+        case CV_16U:
+        {
+          const cv::Mat_<unsigned short> &depth(depth_in);
+          return computeImpl<unsigned short, long>(depth);
+          break;
+        }
+        case CV_32F:
+        {
+          const cv::Mat_<float> &depth(depth_in);
+          return computeImpl<float, float>(depth);
+          break;
+        }
+        case CV_64F:
+        {
+          const cv::Mat_<double> &depth(depth_in);
+          return computeImpl<double, double>(depth);
+          break;
+        }
+      }
+      return cv::Mat();
     }
 
+  private:
     /** Compute the normals
      * @param r
      * @return
      */
+    template<typename DepthDepth, typename ContainerDepth>
     cv::Mat
-    compute(const cv::Mat_<unsigned short> &depth) const
+    computeImpl(const cv::Mat_<DepthDepth> &depth) const
     {
       cv::Mat_<Vec3T> normals(rows_, cols_);
 
@@ -406,23 +425,24 @@ namespace
       Mat33T K_inv = cv::Mat(K_.inv());
       Vec3T X1_minus_X, X2_minus_X;
 
-      int difference_threshold = 50;
+      ContainerDepth difference_threshold = 50;
       for (int y = r; y < rows_ - r - 1; ++y)
       {
-        const unsigned short * p_line = depth.ptr<unsigned short>(y, r);
+        const DepthDepth * p_line = reinterpret_cast<const DepthDepth*>(depth.ptr(y, r));
         Vec3T *normal = normals[0] + (y * cols_ + r);
 
         for (int x = r; x < cols_ - r - 1; ++x)
         {
-          long d = p_line[0];
+          DepthDepth d = p_line[0];
 
           // accum
           long A[4];
           A[0] = A[1] = A[2] = A[3] = 0;
-          long b[2];
+          ContainerDepth b[2];
           b[0] = b[1] = 0;
           for (unsigned int i = 0; i < square_size * square_size; ++i) {
-            long delta = p_line[offsets[i]] - d;
+            // We need to cast to ContainerDepth in case we have unsigned DepthDepth
+            ContainerDepth delta = ContainerDepth(p_line[offsets[i]]) - ContainerDepth(d);
             if (std::abs(delta) > difference_threshold)
                continue;
 
@@ -438,16 +458,16 @@ namespace
           // We should divide the following two by det, but instead, we multiply
           // X1_minus_X and X2_minus_X by det (which does not matter as we normalize the normals)
           // Therefore, no division is done: this is only for speedup
-          long dx = (A[3] * b[0] - A[1] * b[1]) ;
-          long dy = (-A[1] * b[0] + A[0] * b[1]);
+          ContainerDepth dx = (A[3] * b[0] - A[1] * b[1]);
+          ContainerDepth dy = (-A[1] * b[0] + A[0] * b[1]);
 
           // Compute the dot product
-          //Vec3T X = K_inv * Vec3T(l_x, l_y, 1) * depth(l_y, l_x);
-          //Vec3T X1 = K_inv * Vec3T(l_x + 1, l_y, 1) * (depth(l_y, l_x) + dx);
-          //Vec3T X2 = K_inv * Vec3T(l_x, l_y + 1, 1) * (depth(l_y, l_x) + dy);
+          //Vec3T X = K_inv * Vec3T(x, y, 1) * depth(y, x);
+          //Vec3T X1 = K_inv * Vec3T(x + 1, y, 1) * (depth(y, x) + dx);
+          //Vec3T X2 = K_inv * Vec3T(x, y + 1, 1) * (depth(y, x) + dy);
           //Vec3T nor = (X1 - X).cross(X2 - X);
-          multiply_by_K_inv(K_inv, depth(y, x) * det + (x + 1) * dx, y * dx, T(dx), X1_minus_X);
-          multiply_by_K_inv(K_inv, x * dy, depth(y, x) * det + (y + 1) * dy, T(dy), X2_minus_X);
+          multiply_by_K_inv(K_inv, d * det + (x + 1) * dx, y * dx, dx, X1_minus_X);
+          multiply_by_K_inv(K_inv, x * dy, d * det + (y + 1) * dy, dy, X2_minus_X);
           Vec3T nor = X1_minus_X.cross(X2_minus_X);
           signNormal(nor, *normal);
 
@@ -458,7 +478,6 @@ namespace
 
       return normals;
     }
-  private:
   };
 }
 
@@ -771,8 +790,7 @@ namespace cv
     CV_Assert(in_points3d.dims == 2);
     // Either we have 3d points or a depth image
     CV_Assert(
-        ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels()
-            == 1) && (in_points3d.depth() == CV_16U)));
+        ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels() == 1) && ((in_points3d.depth() == CV_16U)|| (in_points3d.depth() == CV_32F)|| (in_points3d.depth() == CV_64F))));
     initialize();
 
     // Precompute something for RGBD_NORMALS_METHOD_SRI and RGBD_NORMALS_METHOD_FALS
