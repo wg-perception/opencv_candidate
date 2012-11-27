@@ -422,7 +422,15 @@ namespace
           offsets[index] = j * cols_ + i;
         }
 
-      Mat33T K_inv = cv::Mat(K_.inv());
+      // Define K_inv by hand, just for higher accuracy
+      Mat33T K_inv = cv::Matx<T, 3, 3>::eye(), K;
+      K_.copyTo(K);
+      K_inv(0, 0) = 1.0 / K(0, 0);
+      K_inv(0, 1) = -K(0, 1) / (K(0, 0) * K(1, 1));
+      K_inv(0, 2) = (K(0, 1) * K(1, 2) - K(0, 2) * K(1, 1)) / (K(0, 0) * K(1, 1));
+      K_inv(1, 1) = 1 / K(1, 1);
+      K_inv(1, 2) = -K(1, 2) / K(1, 1);
+
       Vec3T X1_minus_X, X2_minus_X;
 
       ContainerDepth difference_threshold = 50;
@@ -789,8 +797,27 @@ namespace cv
   {
     CV_Assert(in_points3d.dims == 2);
     // Either we have 3d points or a depth image
-    CV_Assert(
-        ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels() == 1) && ((in_points3d.depth() == CV_16U)|| (in_points3d.depth() == CV_32F)|| (in_points3d.depth() == CV_64F))));
+    switch (method_)
+    {
+      case (RGBD_NORMALS_METHOD_FALS):
+      {
+        CV_Assert( ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+        break;
+      }
+      case RGBD_NORMALS_METHOD_LINEMOD:
+      {
+        CV_Assert(
+            ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels() == 1) && (in_points3d.depth() == CV_16U || in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+        break;
+      }
+      case RGBD_NORMALS_METHOD_SRI:
+      {
+        CV_Assert( ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+        break;
+      }
+    }
+
+    // Initialize the pimpl
     initialize();
 
     // Precompute something for RGBD_NORMALS_METHOD_SRI and RGBD_NORMALS_METHOD_FALS
@@ -824,10 +851,21 @@ namespace cv
       }
       case RGBD_NORMALS_METHOD_LINEMOD:
       {
-        if (depth_ == CV_32F)
-          normals = reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_)->compute(in_points3d);
+        // Only focus on the depth image for LINEMOD
+        cv::Mat depth;
+        if (in_points3d.channels() == 3)
+        {
+          std::vector<cv::Mat> channels;
+          cv::split(points3d, channels);
+          depth = channels[2];
+        }
         else
-          normals = reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_)->compute(in_points3d);
+          depth = in_points3d;
+
+        if (depth_ == CV_32F)
+          normals = reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_)->compute(depth);
+        else
+          normals = reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_)->compute(depth);
         break;
       }
       case RGBD_NORMALS_METHOD_SRI:

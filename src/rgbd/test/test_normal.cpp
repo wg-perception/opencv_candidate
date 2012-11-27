@@ -195,9 +195,9 @@ protected:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD;
             std::cout << std::endl << "*** LINEMOD" << std::endl;
             errors[0][0] = 0.03;
-            errors[0][1] = 0.05;
+            errors[0][1] = 0.07;
             errors[1][0] = 0.05;
-            errors[1][1] = 0.05;
+            errors[1][1] = 0.08;
             break;
           case 2:
             method = cv::RgbdNormals::RGBD_NORMALS_METHOD_SRI;
@@ -265,9 +265,7 @@ protected:
     {
       std::vector<cv::Mat> channels;
       cv::split(points3d, channels);
-      cv::Mat depth;
-      channels[2].convertTo(depth, CV_16U, 1e3);
-      in_normals = normals_computer(cv::Mat_<unsigned short>(depth));
+      in_normals = normals_computer(channels[2]);
     }
     else
       in_normals = normals_computer(points3d);
