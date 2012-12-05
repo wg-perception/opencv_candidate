@@ -115,13 +115,13 @@ Ptr<OnlineCaptureServer::FramePushOutput> OnlineCaptureServer::push(const Mat& _
 
     if(isTrajectoryBroken)
     {
-        cout << "Frame " << frameID << ". Trajectory was broken starting from keyframe " << (*trajectoryFrames->frames.rbegin())->ID << "." << endl;
+        cout << "frame " << frameID << ": trajectory was broken starting from keyframe " << (*trajectoryFrames->frames.rbegin())->ID << "." << endl;
         return pushOutput;
     }
 
     if(isLoopClosed)
     {
-        cout << "Frame " << frameID << ". Loop is already closed. Keyframes count " << trajectoryFrames->frames.size() << endl;
+        cout << "frame " << frameID << ": loop is already closed" << endl;
         return pushOutput;
     }
 
@@ -341,7 +341,7 @@ Ptr<TrajectoryFrames> OnlineCaptureServer::finalize()
         trajectoryFrames->posesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst));
 
         cout << "Last keyframe index " << closureFrameID << endl;
-        cout << "keyframes count = " << trajectoryFrames->frames.size() << endl;
+        cout << "Keyframes count = " << trajectoryFrames->frames.size() << endl;
 
         isLoopClosed = true;
     }

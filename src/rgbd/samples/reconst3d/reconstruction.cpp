@@ -36,7 +36,6 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
         bgrImages.push_back(trajectoryFrames->frames[i]->image);
 
     const float voxelSize = 0.005f;
-    cout << "!!!!!! " << trajectoryFrames->frames[0]->normals.rows << endl;
     genModel(trajectoryFrames->frames, trajectoryFrames->poses, cameraMatrix)->show(voxelSize);
 
     vector<Mat> refinedPosesSE3;
