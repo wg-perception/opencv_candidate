@@ -70,7 +70,7 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
 
         // read image
         {
-            string imagePath = dirname + imageFilename;
+            string imagePath = dirname + "/" + imageFilename;
             Mat image = imread(imagePath);
             CV_Assert(!image.empty());
             bgrImages[i] = image;
@@ -80,7 +80,7 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
         {
             const string depthPath = "depth_image_" + imageIndices[i] + ".xml.gz";
             Mat depth;
-            FileStorage fs(dirname + depthPath, FileStorage::READ);
+            FileStorage fs(dirname + "/" + depthPath, FileStorage::READ);
             CV_Assert(fs.isOpened());
 #if 1
             fs["depth_image"] >> depth;

@@ -1,4 +1,5 @@
 #include <opencv2/rgbd/rgbd.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include "reconst3d.hpp"
 #include "graph_optimizations.hpp"
@@ -14,6 +15,35 @@ preparePosesLinksWithoutRt(const vector<PosesLink>& srcLinks, vector<PosesLink>&
         dstLinks[i] = PosesLink(srcLinks[i].srcIndex, srcLinks[i].dstIndex);
 }
 
+static Mat
+refineObjectMask(const Mat& initObjectMask)
+{
+    vector<vector<Point> > contours;
+    findContours(initObjectMask, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+    if(contours.empty())
+        return initObjectMask.clone();
+
+    int maxMaskArea = 0.;
+    int objectMaskIndex = -1;
+    for(size_t i = 0; i < contours.size(); i++)
+    {
+        Mat mask(initObjectMask.size(), CV_8UC1, Scalar(0));
+        drawContours(mask, contours, i, Scalar(255), CV_FILLED, 8);
+
+        int curMaskArea = countNonZero(mask);
+        if(curMaskArea > maxMaskArea)
+        {
+            maxMaskArea = curMaskArea;
+            objectMaskIndex = i;
+        }
+    }
+
+    Mat objectMask(initObjectMask.size(), CV_8UC1, Scalar(0));
+    drawContours(objectMask, contours, objectMaskIndex, Scalar(255), CV_FILLED, 8);
+
+    return objectMask & initObjectMask;
+}
+
 static void
 prepareFramesForModelRefinement(const Ptr<TrajectoryFrames>& trajectoryFrames, vector<Ptr<RgbdFrame> >& dstFrames)
 {
@@ -22,7 +52,7 @@ prepareFramesForModelRefinement(const Ptr<TrajectoryFrames>& trajectoryFrames, v
     {
         const Ptr<RgbdFrame> srcFrame = trajectoryFrames->frames[i];
         dstFrames[i] = new RgbdFrame(srcFrame->image.clone(), srcFrame->depth.clone(),
-                                     trajectoryFrames->objectMasks[i].clone(), srcFrame->normals.clone(),
+                                     refineObjectMask(trajectoryFrames->objectMasks[i]), srcFrame->normals.clone(),
                                      srcFrame->ID);
     }
 }

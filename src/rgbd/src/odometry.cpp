@@ -678,10 +678,10 @@ void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
                 w = w > DBL_EPSILON ? 1./w : 1.;
 
                 double w_sobelScale = w * sobelScale;
-                (*func)(A.ptr<double>(pointCount),
-                         w_sobelScale * dI_dx1.at<short int>(v1,u1),
-                         w_sobelScale * dI_dy1.at<short int>(v1,u1),
-                         cloud0_row[u0], fx, fy);
+                func(A.ptr<double>(pointCount),
+                     w_sobelScale * dI_dx1.at<short int>(v1,u1),
+                     w_sobelScale * dI_dy1.at<short int>(v1,u1),
+                     cloud0_row[u0], fx, fy);
 
                 B.at<double>(pointCount) = w * diffs_ptr[pointCount];
                 pointCount++;
@@ -753,7 +753,7 @@ void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
                 double w = sigma + std::abs(diffs_ptr[pointCount]);
                 w = w > DBL_EPSILON ? 1./w : 1.;
 
-                (*func)(A.ptr<double>(pointCount), tps0_ptr[pointCount], levelNormals1.at<Vec3f>(v1, u1) * w);
+                func(A.ptr<double>(pointCount), tps0_ptr[pointCount], levelNormals1.at<Vec3f>(v1, u1) * w);
                 B.at<double>(pointCount) = w * diffs_ptr[pointCount];
 
                 pointCount++;

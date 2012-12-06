@@ -469,8 +469,6 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
             }
         }
 
-        //Mat correspsCounts = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(2000));
-
         for(int v0 = 0; v0 < correspsCounts.rows; v0++)
         {
             for(int u0 = 0; u0 < correspsCounts.cols; u0++)
