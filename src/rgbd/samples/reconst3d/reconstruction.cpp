@@ -101,6 +101,10 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
                                           // they will modified while refining the object points
     prepareFramesForModelRefinement(trajectoryFrames, objectFrames);
 
+
+    //vector<Mat> refinedAllPoses;
+    //refineGraphSE3Segment(trajectoryFrames->poses, refinedPosesSE3RgbdICP, frameIndices, refinedAllPoses);
+
     vector<Mat> refinedSE3ICPSE3ModelPoses;
     refineGraphSE3RgbdICPModel(objectFrames, refinedPosesSE3RgbdICP,
                                keyframePosesLinks, cameraMatrix, refinedSE3ICPSE3ModelPoses, frameIndices);

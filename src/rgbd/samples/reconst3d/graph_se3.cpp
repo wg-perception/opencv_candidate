@@ -72,7 +72,7 @@ bool addGraphVertex(g2o::SparseOptimizer* optimizer, int vertexID, const Mat& po
 }
 
 void fillGraphSE3(g2o::SparseOptimizer* optimizer,
-                  const vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, std::vector<int>& frameIndices)
+                  const vector<Mat>& poses, const vector<PosesLink>& posesLinks, vector<int>& frameIndices)
 {
     CV_Assert(!poses.empty());
     CV_Assert(!posesLinks.empty());
@@ -98,7 +98,7 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer,
     optimizer->vertex(fixedVertexIndex)->setFixed(true); //fix at origin
 }
 
-void refineGraphSE3(const vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
+void refineGraphSE3(const vector<Mat>& poses, const vector<PosesLink>& posesLinks,
                     vector<Mat>& refinedPoses, vector<int>& frameIndices)
 {
     refinedPoses.resize(poses.size());
@@ -126,7 +126,7 @@ void refineGraphSE3(const vector<Mat>& poses, const std::vector<PosesLink>& pose
     delete optimizer;
 }
 
-void getSE3Poses(g2o::SparseOptimizer* optimizer, const std::vector<int>& frameIndices, vector<Mat>& poses)
+void getSE3Poses(g2o::SparseOptimizer* optimizer, const vector<int>& frameIndices, vector<Mat>& poses)
 {
     for(size_t i = 0; i < frameIndices.size(); i++)
     {
@@ -138,5 +138,104 @@ void getSE3Poses(g2o::SparseOptimizer* optimizer, const std::vector<int>& frameI
         CV_Assert(frameIndex >= 0 && frameIndex < static_cast<int>(poses.size()));
 
         poses[frameIndex] = cvtIsometry_egn2ocv(pose);
+    }
+}
+
+void refineGraphSE3Segment(const vector<Mat>& odometryPoses,
+                           const vector<Mat>& partiallyRefinedPoses,
+                           const vector<int>& refinedFrameIndices,
+                           vector<Mat>& refinedAllPoses)
+{
+    CV_Assert(odometryPoses.size() == partiallyRefinedPoses.size());
+
+    vector<Mat> rebasedPoses(odometryPoses.size());
+
+    vector<int> sortedRefinedFrameIndices(refinedFrameIndices.size());
+    std::copy(refinedFrameIndices.begin(), refinedFrameIndices.end(), sortedRefinedFrameIndices.begin());
+    std::sort(sortedRefinedFrameIndices.begin(), sortedRefinedFrameIndices.begin(), std::less<int>());
+
+    CV_Assert(!sortedRefinedFrameIndices.empty());
+
+    for(size_t ki = 1; ki < sortedRefinedFrameIndices.size(); ki++)
+    {
+        int startIndex = sortedRefinedFrameIndices[ki-1];
+        int endIndex = sortedRefinedFrameIndices[ki];
+
+        Mat basePose = partiallyRefinedPoses[startIndex].clone();
+
+        int lastValidIndex = startIndex + 1;
+        for(int fi = startIndex + 1; fi <= endIndex; fi++)
+        {
+            if(odometryPoses[fi].empty() || odometryPoses[lastValidIndex].empty())
+                continue;
+
+            Mat deltaRt = odometryPoses[lastValidIndex].inv() * odometryPoses[fi];
+            rebasedPoses[fi] = basePose * deltaRt;
+            basePose = rebasedPoses[fi].clone();
+
+            lastValidIndex = fi;
+        }
+    }
+
+    // Refine poses by pose graph oprimization
+    refinedAllPoses.resize(partiallyRefinedPoses.size());
+    std::copy(partiallyRefinedPoses.begin(), partiallyRefinedPoses.end(), refinedAllPoses.begin());
+    for(size_t ki = 1; ki < sortedRefinedFrameIndices.size(); ki++)
+    {
+        G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
+        G2OBlockSolver* blockSolver = createBlockSolver(linearSolver);
+        g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
+        g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
+
+        int startIndex = sortedRefinedFrameIndices[ki-1];
+        int endIndex = sortedRefinedFrameIndices[ki];
+
+        CV_Assert(addGraphVertex(optimizer, startIndex, partiallyRefinedPoses[startIndex]));
+        optimizer->vertex(startIndex)->setFixed(true); //fix at origin
+
+        CV_Assert(addGraphVertex(optimizer, endIndex, partiallyRefinedPoses[endIndex]));
+        optimizer->vertex(endIndex)->setFixed(true); //fix at origin
+
+        for(int fi = startIndex + 1; fi < endIndex; fi++)
+        {
+            if(rebasedPoses[fi].empty())
+                continue;
+
+            CV_Assert(addGraphVertex(optimizer, fi, rebasedPoses[fi]));
+        }
+
+        Mat prevPose = partiallyRefinedPoses[startIndex];
+        int edgesCount = 0;
+        for(int fi = startIndex + 1; fi <= endIndex; fi++)
+        {
+            if(rebasedPoses[fi].empty())
+                continue;
+
+            // Add edge with previous frame
+            optimizer->addEdge(createEdgeSE3(optimizer->vertex(fi-1), optimizer->vertex(fi),
+                                             prevPose.inv(DECOMP_SVD) * rebasedPoses[fi]));
+            prevPose = rebasedPoses[fi];
+            edgesCount++;
+        }
+
+        if(edgesCount > 1)
+        {
+            optimizer->initializeOptimization();
+            const int optIterCount = 5;
+            cout << "Vertices count: " << optimizer->vertices().size() << endl;
+            cout << "Edges count: " << optimizer->edges().size() << endl;
+            if(optimizer->optimize(optIterCount) != optIterCount)
+                CV_Error(CV_StsError, "Cann't do given count of iterations\n");
+
+            for(int fi = startIndex + 1; fi < endIndex; fi++)
+            {
+                if(rebasedPoses[fi].empty())
+                    continue;
+                getSE3Poses(optimizer, vector<int>(1, fi), refinedAllPoses);
+            }
+        }
+
+        optimizer->clear();
+        delete optimizer;
     }
 }

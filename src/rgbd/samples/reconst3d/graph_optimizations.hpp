@@ -163,6 +163,12 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer,
 void refineGraphSE3(const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks,
                     std::vector<cv::Mat>& refinedPoses, std::vector<int>& frameIndices);
 
+void refineGraphSE3Segment(const std::vector<cv::Mat>& odometryPoses,
+                           const std::vector<cv::Mat>& partiallyRefinedPoses,
+                           const std::vector<int>& refinedFrameIndices,
+                           std::vector<cv::Mat>& refinedAllPoses);
+
+
 
 // Graph with 2 types of edges: odometry and Rgbd+ICP for correspondences.
 void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer,
