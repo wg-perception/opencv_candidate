@@ -151,32 +151,33 @@ g2o::SparseOptimizer* createOptimizer(g2o::OptimizationAlgorithm* solver)
 // graph opt
 
 // Restore refined camera poses from the graph.
-// verticesRange is a range of camera poses that have to be restore: [verticesRange.start, verticesRange.end)
-void getSE3Poses(g2o::SparseOptimizer* optimizer, const cv::Range& verticesRange, std::vector<cv::Mat>& poses);
+void getSE3Poses(g2o::SparseOptimizer* optimizer, const std::vector<int>& frameIndices, std::vector<cv::Mat>& poses);
 
 // Fill the given graph by vertices and edges for the camera pose refinement geometrically.
 // Each vertex is a camera pose. Each edge constraint is the odometry between linked vertices.
 void fillGraphSE3(g2o::SparseOptimizer* optimizer,
-                  const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks);
+                  const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks,
+                  std::vector<int>& frameIndices);
 
 // Refine camera poses geometrically
-void refineSE3Poses(const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks,
-                    std::vector<cv::Mat>& refinedPoses);
+void refineGraphSE3(const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks,
+                    std::vector<cv::Mat>& refinedPoses, std::vector<int>& frameIndices);
 
 
 // Graph with 2 types of edges: odometry and Rgbd+ICP for correspondences.
 void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer,
                          const std::vector<cv::Ptr<cv::OdometryFrame> >& frames,
-                         const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix);
+                         const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
+                         std::vector<int>& frameIndices);
 
 // Refine camera poses by graph with odometry edges and Rgbd+ICP edges
-void refineSE3RgbdICPPoses(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames,
+void refineGraphSE3RgbdICP(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames,
                            const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
-                           float pointsPart, std::vector<cv::Mat>& refinedPoses);
+                           float pointsPart, std::vector<cv::Mat>& refinedPoses, std::vector<int>& frameIndices);
 
 
-void refineSE3RgbdICPModel(std::vector<cv::Ptr<cv::RgbdFrame> >& frames,
-                           const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
-                           std::vector<cv::Mat>& refinedPoses);
+void refineGraphSE3RgbdICPModel(std::vector<cv::Ptr<cv::RgbdFrame> >& frames,
+                                const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
+                                std::vector<cv::Mat>& refinedPoses, std::vector<int>& frameIndices);
 
 #endif

@@ -54,3 +54,7 @@ CV_INIT_ALGORITHM_FIX(OnlineCaptureServer, "ModelCapture.OnlineCaptureServer",
     obj.info()->addParam(obj, "isInitialied", obj.isInitialied, true);
     obj.info()->addParam(obj, "isFinalized", obj.isFinalized, true);
     obj.info()->addParam(obj, "isLoopClosed", obj.isLoopClosed, true);)
+
+
+CV_INIT_ALGORITHM_FIX(ModelReconstructor, "ModelCapture.ModelReconstructor",
+    obj.info()->addParam(obj, "isShowStepResults", obj.isShowStepResults);)

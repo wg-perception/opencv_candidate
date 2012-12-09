@@ -51,11 +51,12 @@ struct TrajectoryFrames
               const cv::Mat& objectMask, int state);
     void clear();
 
+    int resumeFrameState;
     std::vector<cv::Ptr<cv::RgbdFrame> > frames;
-    std::vector<cv::Mat> poses;
+    std::vector<int> frameStates;
     std::vector<cv::Mat> objectMasks;
-    std::vector<PosesLink> posesLinks;
-    std::vector<int> states;
+    std::vector<cv::Mat> poses;
+    std::vector<PosesLink> keyframePosesLinks;
 };
 
 class OnlineCaptureServer: public cv::Algorithm
@@ -65,7 +66,7 @@ public:
     {
         FramePushOutput();
 
-        int state;
+        int frameState;
         cv::Ptr<cv::OdometryFrame> frame;
         cv::Mat pose;
         cv::Mat objectMask;
@@ -129,7 +130,7 @@ protected:
     double translationSum;
     float closureInliersRatio;
     int closureFrameID;
-    bool isClosureFrameAdded;
+    bool isClosureFrameKey;
     cv::Mat closureBgrImage;
     cv::Mat closureObjectMask;
     cv::Mat closurePose, closurePoseWithFirst;
@@ -142,6 +143,7 @@ class ObjectModel
 public:
     ObjectModel();
     void clear();
+
     void read_ply(const std::string& filename);
     void write_ply(const std::string& filename) const;
 
@@ -156,13 +158,20 @@ class ModelReconstructor : public cv::Algorithm
 {
 public:
 
+    ModelReconstructor();
+
     void reconstruct(const cv::Ptr<TrajectoryFrames>& trajectoryFrames, const cv::Mat& cameraMatrix, cv::Ptr<ObjectModel>& model) const;
 
-    static cv::Ptr<ObjectModel> genModel(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& poses, const cv::Mat& cameraMatrix);
+    static cv::Ptr<ObjectModel> genModel(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& poses,
+                                         const cv::Mat& cameraMatrix, const std::vector<int>& frameIndices=std::vector<int>());
+    
+    cv::AlgorithmInfo*
+    info() const;
 
 private:
-    // TODO algorithm params
+    // TODO make more algorithm params available outside
 
+    bool isShowStepResults;
 };
 
 #endif // RECONST3D_HPP

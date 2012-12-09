@@ -56,41 +56,62 @@ g2o::EdgeSE3* createEdgeSE3(g2o::HyperGraph::Vertex* v0, g2o::HyperGraph::Vertex
     return g2o_edge;
 }
 
-void fillGraphSE3(g2o::SparseOptimizer* optimizer,
-                  const vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks)
+static 
+bool addGraphVertex(g2o::SparseOptimizer* optimizer, int vertexID, const Mat& pose)
 {
-    // add vertices
-    for(size_t vertexIndex = 0; vertexIndex < poses.size(); vertexIndex++)
+    g2o::VertexSE3* existVertex = dynamic_cast<g2o::VertexSE3*>(optimizer->vertex(vertexID));
+    if(!existVertex)
     {
-        // add vertex
-        g2o::VertexSE3* pose = new g2o::VertexSE3;
-        pose->setId(vertexIndex);
-        pose->setEstimate(cv2G2O(poses[vertexIndex]));
-        optimizer->addVertex(pose);
-
-        if(vertexIndex == 0)
-            optimizer->vertex(vertexIndex)->setFixed(true); //fix at origin
+        g2o::VertexSE3* newVertex = new g2o::VertexSE3;
+        newVertex->setId(vertexID);
+        newVertex->setEstimate(cv2G2O(pose));
+        optimizer->addVertex(newVertex);
+        return true;
     }
+    return false;
+}
 
+void fillGraphSE3(g2o::SparseOptimizer* optimizer,
+                  const vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, std::vector<int>& frameIndices)
+{
+    CV_Assert(!poses.empty());
+    CV_Assert(!posesLinks.empty());
+
+    frameIndices.clear();
     for(size_t edgeIndex = 0; edgeIndex < posesLinks.size(); edgeIndex++)
     {
         int srcVertexIndex = posesLinks[edgeIndex].srcIndex;
         int dstVertexIndex = posesLinks[edgeIndex].dstIndex;
+
+        // add vetices
+        if(addGraphVertex(optimizer, srcVertexIndex, poses[srcVertexIndex]))
+            frameIndices.push_back(srcVertexIndex);
+        if(addGraphVertex(optimizer, dstVertexIndex, poses[dstVertexIndex]))
+            frameIndices.push_back(dstVertexIndex);
+
+        // add edge between the vertices
         Mat Rt = posesLinks[edgeIndex].Rt.empty() ? poses[srcVertexIndex].inv(DECOMP_SVD) * poses[dstVertexIndex] : posesLinks[edgeIndex].Rt;
         optimizer->addEdge(createEdgeSE3(optimizer->vertex(srcVertexIndex), optimizer->vertex(dstVertexIndex), Rt));
     }
+
+    int fixedVertexIndex = posesLinks[0].srcIndex;
+    optimizer->vertex(fixedVertexIndex)->setFixed(true); //fix at origin
 }
 
-void refineSE3Poses(const vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
-                    vector<Mat>& refinedPoses)
+void refineGraphSE3(const vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
+                    vector<Mat>& refinedPoses, vector<int>& frameIndices)
 {
+    refinedPoses.resize(poses.size());
+    for(size_t i = 0; i < poses.size(); i++)
+        refinedPoses[i] = poses[i].clone();
+
     // Refine poses by pose graph oprimization
     G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
     G2OBlockSolver* blockSolver = createBlockSolver(linearSolver);
     g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
     g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-    fillGraphSE3(optimizer, poses, posesLinks);
+    fillGraphSE3(optimizer, poses, posesLinks, frameIndices);
 
     optimizer->initializeOptimization();
     const int optIterCount = 5;
@@ -99,19 +120,23 @@ void refineSE3Poses(const vector<Mat>& poses, const std::vector<PosesLink>& pose
     if(optimizer->optimize(optIterCount) != optIterCount)
         CV_Error(CV_StsError, "Cann't do given count of iterations\n");
 
-    getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
+    getSE3Poses(optimizer, frameIndices, refinedPoses);
 
     optimizer->clear();
     delete optimizer;
 }
 
-void getSE3Poses(g2o::SparseOptimizer* optimizer, const Range& verticesRange, vector<Mat>& poses)
+void getSE3Poses(g2o::SparseOptimizer* optimizer, const std::vector<int>& frameIndices, vector<Mat>& poses)
 {
-    poses.resize(verticesRange.end - verticesRange.start);
-    for(int i = verticesRange.start; i < verticesRange.end; i++)
+    for(size_t i = 0; i < frameIndices.size(); i++)
     {
-        g2o::VertexSE3* v = dynamic_cast<g2o::VertexSE3*>(optimizer->vertex(i));
+        int frameIndex = frameIndices[i];
+
+        g2o::VertexSE3* v = dynamic_cast<g2o::VertexSE3*>(optimizer->vertex(frameIndex));
         Eigen::Isometry3d pose = v->estimate();
-        poses[i] = cvtIsometry_egn2ocv(pose);
+
+        CV_Assert(frameIndex >= 0 && frameIndex < static_cast<int>(poses.size()));
+
+        poses[frameIndex] = cvtIsometry_egn2ocv(pose);
     }
 }

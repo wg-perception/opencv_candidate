@@ -62,7 +62,7 @@ int main(int argc, char** argv)
     OnlineCaptureServer onlineCaptureServer;
     onlineCaptureServer.set("cameraMatrix", cameraMatrix);
     CV_Assert(!bgrImages[0].empty());
-    onlineCaptureServer.initialize(bgrImages[0].size());
+    onlineCaptureServer.initialize(bgrImages[0].size());//, TrajectoryFrames::VALIDFRAME);
     for(size_t i = 0; i < bgrImages.size(); i++)
         onlineCaptureServer.push(bgrImages[i], depthes[i], i);
 
@@ -75,13 +75,15 @@ int main(int argc, char** argv)
 #endif
 
     ModelReconstructor reconstructor;
+    reconstructor.set("isShowStepResults", false);
+
     Ptr<ObjectModel> model;
     reconstructor.reconstruct(trajectoryFrames, cameraMatrix, model);
 
     if(argc == 3)
         model->write_ply(argv[2]);
 
-    //model->show();
+    model->show();
 
     return 0;
 }

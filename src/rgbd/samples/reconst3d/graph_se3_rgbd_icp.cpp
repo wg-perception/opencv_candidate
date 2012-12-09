@@ -247,26 +247,29 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
 }
 
 void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<OdometryFrame> >& frames,
-                         const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix_64F)
+                         const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix_64F,
+                         std::vector<int>& frameIndices)
 {
+    CV_Assert(frames.size() == poses.size());
     g2o::Edge_V_V_RGBD::initializeStaticMatrices(); // TODO: make this more correctly
 
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
     const double maxDepthDiff = 0.01;
 
-    CV_Assert(frames.size() == poses.size());
-
-    fillGraphSE3(optimizer, poses, posesLinks);
+    fillGraphSE3(optimizer, poses, posesLinks, frameIndices);
 
     // set up ICP edges
-    for(size_t currFrameIdx = 0; currFrameIdx < frames.size(); currFrameIdx++)
+    for(size_t currIdx = 0; currIdx < frameIndices.size(); currIdx++)
     {
+        int currFrameIdx = frameIndices[currIdx];
+
         const Mat& curCloud = frames[currFrameIdx]->pyramidCloud[0];
         const Mat& curNormals = frames[currFrameIdx]->normals;
 
-        for(size_t prevFrameIdx = 0; prevFrameIdx < frames.size(); prevFrameIdx++)
+        for(size_t prevIdx = 0; prevIdx < frameIndices.size(); prevIdx++)
         {
+            int prevFrameIdx = frameIndices[prevIdx];
             if(currFrameIdx == prevFrameIdx)
                 continue;
 
@@ -286,7 +289,6 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
                                                 frames[currFrameIdx]->pyramidMask[0],
                                                 frames[prevFrameIdx]->depth,
                                                 frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                //frames[prevFrameIdx]->pyramidTexturedMask[0],
                                                 maxDepthDiff, corresps_icp);
 #define WITH_RGBD 1
 #if WITH_RGBD
@@ -297,7 +299,6 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
                                                 frames[currFrameIdx]->depth,
                                                 frames[currFrameIdx]->pyramidMask[0],
                                                 frames[prevFrameIdx]->depth,
-                                                //frames[prevFrameIdx]->pyramidNormalsMask[0],
                                                 frames[prevFrameIdx]->pyramidTexturedMask[0],
                                                 maxDepthDiff, corresps_rgbd);
 #endif
@@ -391,11 +392,13 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
     }
 }
 
-void refineSE3RgbdICPPoses(const std::vector<Ptr<RgbdFrame> >& _frames,
+void refineGraphSE3RgbdICP(const std::vector<Ptr<RgbdFrame> >& _frames,
                            const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
                            const Mat& cameraMatrix, float pointsPart,
-                           std::vector<Mat>& refinedPoses)
+                           std::vector<Mat>& refinedPoses, std::vector<int>& frameIndices)
 {
+    CV_Assert(_frames.size() == poses.size());
+
     const int iterCount = 5;
     // TODO: find corresp to main API?
     // TODO: odom with one level here
@@ -433,7 +436,7 @@ void refineSE3RgbdICPPoses(const std::vector<Ptr<RgbdFrame> >& _frames,
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F);
+        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
 
         optimizer->initializeOptimization();
         const int optIterCount = 1;
@@ -448,7 +451,7 @@ void refineSE3RgbdICPPoses(const std::vector<Ptr<RgbdFrame> >& _frames,
         }
         cout << "Finish optimization " << endl;
 
-        getSE3Poses(optimizer, Range(0, optimizer->vertices().size()), refinedPoses);
+        getSE3Poses(optimizer, frameIndices, refinedPoses);
 
         optimizer->clear();
         delete optimizer;

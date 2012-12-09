@@ -154,10 +154,11 @@ void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
     }
 }
 
-void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
-                           const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix,
-                           std::vector<Mat>& refinedPoses)
+void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
+                                const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix,
+                                std::vector<Mat>& refinedPoses, std::vector<int>& frameIndices)
 {
+    CV_Assert(_frames.size() == poses.size());
     g2o::Edge_V_V_GICPLandmark::initializeStaticMatrices(); // TODO: make this more correctly
 
     Mat cameraMatrix_64F, cameraMatrix_inv_64F;
@@ -165,7 +166,8 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
     cameraMatrix_inv_64F = cameraMatrix_64F.inv();
 
     refinedPoses.resize(poses.size());
-    std::copy(poses.begin(), poses.end(), refinedPoses.begin());
+    for(size_t i = 0; i < poses.size(); i++)
+        refinedPoses[i] = poses[i];
 
     RgbdICPOdometry odom;
     vector<float> minGradientMagnitudes(1,10);
@@ -207,27 +209,29 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F);
+        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
 
-        vector<Mat> vertexIndices(frames.size());
-        int vertexIdx = optimizer->vertices().size();
-        int posesVertexCount = optimizer->vertices().size();
-        for(size_t curFrameIdx = 0; curFrameIdx < frames.size(); curFrameIdx++)
+        vector<Mat> vertexIndices(frameIndices.size());
+        int vertexIdx = frames.size();
+        for(size_t currIdx = 0; currIdx < frameIndices.size(); currIdx++)
         {
-            vertexIndices[curFrameIdx] = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(-1));
+            int currFrameIdx = frameIndices[currIdx];
 
-            Mat& curVertexIndices = vertexIndices[curFrameIdx];
-            const Mat& curCloud = frames[curFrameIdx]->pyramidCloud[0];
-            const Mat& curNormals = frames[curFrameIdx]->normals;
+            vertexIndices[currIdx] = Mat(frames[currFrameIdx]->image.size(), CV_32SC1, Scalar(-1));
+
+            Mat& curVertexIndices = vertexIndices[currIdx];
+            const Mat& curCloud = frames[currFrameIdx]->pyramidCloud[0];
+            const Mat& curNormals = frames[currFrameIdx]->normals;
 
             // compute count of correspondences
-            Mat correspsCounts = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(0));
-            for(size_t prevFrameIdx = 0; prevFrameIdx < frames.size(); prevFrameIdx++)
+            Mat correspsCounts = Mat(frames[currFrameIdx]->image.size(), CV_32SC1, Scalar(0));
+            for(size_t prevIdx = 0; prevIdx < frameIndices.size(); prevIdx++)
             {
-                if(curFrameIdx == prevFrameIdx)
+                int prevFrameIdx = frameIndices[prevIdx];
+                if(currFrameIdx == prevFrameIdx)
                     continue;
 
-                Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[curFrameIdx];
+                Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[currFrameIdx];
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
@@ -236,14 +240,14 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                      curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
                 computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                        frames[curFrameIdx]->depth,
-                                        frames[curFrameIdx]->mask,
+                                        frames[currFrameIdx]->depth,
+                                        frames[currFrameIdx]->mask,
                                         frames[prevFrameIdx]->depth,
                                         frames[prevFrameIdx]->pyramidNormalsMask[0],
                                         maxDepthDiff, corresps,
-                                        frames[curFrameIdx]->pyramidNormals[0],
+                                        frames[currFrameIdx]->pyramidNormals[0],
                                         transformedPrevNormals,
-                                        frames[curFrameIdx]->image,
+                                        frames[currFrameIdx]->image,
                                         frames[prevFrameIdx]->image);
 
                 for(int v0 = 0; v0 < corresps.rows; v0++)
@@ -258,14 +262,15 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
             }
 
             // set up edges
-            for(size_t prevFrameIdx = 0; prevFrameIdx < frames.size(); prevFrameIdx++)
+            for(size_t prevIdx = 0; prevIdx < frameIndices.size(); prevIdx++)
             {
-                if(curFrameIdx == prevFrameIdx)
+                int prevFrameIdx = frameIndices[prevIdx];
+                if(currFrameIdx == prevFrameIdx)
                     continue;
 
                 const Mat& prevCloud = frames[prevFrameIdx]->pyramidCloud[0];
                 const Mat& prevNormals = frames[prevFrameIdx]->normals;
-                Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[curFrameIdx];
+                Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[currFrameIdx];
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
@@ -274,17 +279,17 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                      curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
                 computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                        frames[curFrameIdx]->depth,
-                                        frames[curFrameIdx]->mask,
+                                        frames[currFrameIdx]->depth,
+                                        frames[currFrameIdx]->mask,
                                         frames[prevFrameIdx]->depth,
                                         frames[prevFrameIdx]->pyramidNormalsMask[0],
                                         maxDepthDiff, corresps,
-                                        frames[curFrameIdx]->pyramidNormals[0],
+                                        frames[currFrameIdx]->pyramidNormals[0],
                                         transformedPrevNormals,
-                                        frames[curFrameIdx]->image,
+                                        frames[currFrameIdx]->image,
                                         frames[prevFrameIdx]->image);
 
-                std::cout << "landmarks: iter " << iter << "; cur " << curFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
+                std::cout << "landmarks: iter " << iter << "; cur " << currFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
 
                 // poses and edges for points3d
                 for(int v0 = 0; v0 < corresps.rows; v0++)
@@ -322,11 +327,11 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                         global_norm_prev = cvtPoint_ocv2egn(tp[0]);
 
                                         perspectiveTransform(vector<Point3f>(1, curCloud.at<Point3f>(v0,u0)),
-                                                             tp, refinedPoses[curFrameIdx]);
+                                                             tp, refinedPoses[currFrameIdx]);
                                         CV_Assert(isValidDepth(tp[0].z));
                                         pt_cur = cvtPoint_ocv2egn(tp[0]);
                                         perspectiveTransform(vector<Point3f>(1, curNormals.at<Point3f>(v0,u0)),
-                                                             tp, refinedPoses[curFrameIdx]);
+                                                             tp, refinedPoses[currFrameIdx]);
                                         CV_Assert(isValidDepth(tp[0].z));
                                         norm_cur = cvtPoint_ocv2egn(tp[0]);
                                     }
@@ -387,15 +392,16 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
             break;
         }
 
-        getSE3Poses(optimizer, Range(0, posesVertexCount), refinedPoses);
+        getSE3Poses(optimizer, frameIndices, refinedPoses);
 
         // update points poses
         cout << "Updating model points..." << endl;
-        CV_Assert(refinedPoses.size() ==  vertexIndices.size());
-        for(size_t i = 0; i < vertexIndices.size(); i++)
+        CV_Assert(frameIndices.size() ==  vertexIndices.size());
+        for(size_t i = 0; i < frameIndices.size(); i++)
         {
+            int frameIdx = frameIndices[i];
             const Mat& curVertexIndices = vertexIndices[i];
-            Mat& depth = frames[i]->depth;
+            Mat& depth = frames[frameIdx]->depth;
             for(int y = 0; y < curVertexIndices.rows; y++)
             {
                 for(int x = 0; x < curVertexIndices.cols; x++)
@@ -411,19 +417,19 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                         p.x = ep[0]; p.y = ep[1]; p.z = ep[2];
                     }
                     vector<Point3f> tp;
-                    perspectiveTransform(vector<Point3f>(1, p), tp, refinedPoses[i].inv(DECOMP_SVD));
+                    perspectiveTransform(vector<Point3f>(1, p), tp, refinedPoses[frameIdx].inv(DECOMP_SVD));
                     CV_Assert(isValidDepth(tp[0].z));
                     depth.at<float>(y,x) = tp[0].z;
                 }
             }
 
-            frames[i]->pyramidMask.clear();
-            frames[i]->pyramidDepth.clear();
-            frames[i]->normals.release();
-            frames[i]->pyramidNormals.clear();
-            frames[i]->pyramidCloud.clear();
-            frames[i]->pyramidNormalsMask.clear();
-            odom.prepareFrameCache(frames[i], OdometryFrame::CACHE_ALL);
+            frames[frameIdx]->pyramidMask.clear();
+            frames[frameIdx]->pyramidDepth.clear();
+            frames[frameIdx]->normals.release();
+            frames[frameIdx]->pyramidNormals.clear();
+            frames[frameIdx]->pyramidCloud.clear();
+            frames[frameIdx]->pyramidNormalsMask.clear();
+            odom.prepareFrameCache(frames[frameIdx], OdometryFrame::CACHE_ALL);
         }
 
         optimizer->clear();
@@ -431,31 +437,33 @@ void refineSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
     }
 
     // remove points without correspondences
-    for(size_t curFrameIdx = 0; curFrameIdx < frames.size(); curFrameIdx++)
+    for(size_t currIdx = 0; currIdx < frameIndices.size(); currIdx++)
     {
+        int currFrameIdx = frameIndices[currIdx];
         // compute count of correspondences
-        Mat& curCloud = frames[curFrameIdx]->pyramidCloud[0];
-        Mat& curDepth = frames[curFrameIdx]->depth;
-        Mat correspsCounts = Mat(frames[curFrameIdx]->image.size(), CV_32SC1, Scalar(0));
-        for(size_t prevFrameIdx = 0; prevFrameIdx < frames.size(); prevFrameIdx++)
+        Mat& curCloud = frames[currFrameIdx]->pyramidCloud[0];
+        Mat& curDepth = frames[currFrameIdx]->depth;
+        Mat correspsCounts = Mat(frames[currFrameIdx]->image.size(), CV_32SC1, Scalar(0));
+        for(size_t prevIdx = 0; prevIdx < frameIndices.size(); prevIdx++)
         {
-            if(curFrameIdx == prevFrameIdx)
+            int prevFrameIdx = frameIndices[prevIdx];
+            if(currFrameIdx == prevFrameIdx)
                 continue;
 
-            Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[curFrameIdx];
+            Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[currFrameIdx];
             Mat transformedPrevNormals;
             perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
                                  curToPrevRt.inv(DECOMP_SVD));
             Mat corresps;
             computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
-                                    frames[curFrameIdx]->depth,
-                                    frames[curFrameIdx]->mask,
+                                    frames[currFrameIdx]->depth,
+                                    frames[currFrameIdx]->mask,
                                     frames[prevFrameIdx]->depth,
                                     frames[prevFrameIdx]->pyramidNormalsMask[0],
                                     0.003, corresps,
-                                    frames[curFrameIdx]->pyramidNormals[0],
+                                    frames[currFrameIdx]->pyramidNormals[0],
                                     transformedPrevNormals,
-                                    frames[curFrameIdx]->image,
+                                    frames[currFrameIdx]->image,
                                     frames[prevFrameIdx]->image);
 
             for(int v0 = 0; v0 < corresps.rows; v0++)
