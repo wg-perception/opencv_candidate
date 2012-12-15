@@ -39,6 +39,11 @@
 
 namespace cv
 {
+  CV_INIT_ALGORITHM(DepthCleaner, "RGBD.DepthCleaner",
+      obj.info()->addParam(obj, "window_size", obj.window_size_);
+      obj.info()->addParam(obj, "depth", obj.depth_);
+      obj.info()->addParam(obj, "method", obj.method_))
+
   CV_INIT_ALGORITHM(RgbdNormals, "RGBD.RgbdNormals",
       obj.info()->addParam(obj, "rows", obj.rows_); 
       obj.info()->addParam(obj, "cols", obj.cols_); 

@@ -6,6 +6,7 @@ find_package(OpenCV REQUIRED)
 
 add_library(opencv_rgbd src/normal.cpp
                         src/depth_to_3d.cpp
+                        src/depth_cleaner.cpp
                         src/odometry.cpp
                         src/plane.cpp
                         src/rgbd_init.cpp

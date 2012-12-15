@@ -166,6 +166,73 @@ namespace cv
     mutable void* rgbd_normals_impl_;
   };
 
+  /** Object that can clean a noisy depth image
+   */
+  CV_EXPORTS
+  class DepthCleaner: public Algorithm
+  {
+  public:
+    /** NIL method is from
+     * ``Modeling Kinect Sensor Noise for Improved 3d Reconstruction and Tracking``
+     * by C. Nguyen, S. Izadi, D. Lovel
+     */
+    enum DEPTH_CLEANER_METHOD
+    {
+      DEPTH_CLEANER_NIL
+    };
+
+    DepthCleaner()
+        :
+          depth_(0),
+          window_size_(0),
+          method_(DEPTH_CLEANER_NIL),
+          depth_cleaner_impl_(0)
+    {
+    }
+
+    /** Constructor
+     * @param depth the depth of the normals (only CV_32F or CV_64F for FALS and SRI, CV_16U for LINEMOD)
+     * @param window_size the window size to compute the normals: can only be 1,3,5 or 7
+     * @param method one of the methods to use: RGBD_NORMALS_METHOD_SRI, RGBD_NORMALS_METHOD_FALS
+     */
+    DepthCleaner(int depth, int window_size = 5, int method = DEPTH_CLEANER_NIL);
+
+    ~DepthCleaner();
+
+    AlgorithmInfo*
+    info() const;
+
+    /** Given a set of 3d points in a depth image, compute the normals at each point.
+     * @param points a rows x cols x 3 matrix of CV_32F/CV64F or a rows x cols x 1 CV_U16S
+     * @return normals a rows x cols x 3 matrix
+     */
+    cv::Mat
+    operator()(const cv::Mat &points) const;
+
+    /** Initializes some data that is cached for later computation
+     * If that function is not called, it will be called the first time normals are computed
+     */
+    void
+    initialize() const;
+
+    /** Return the current method in that normal computer
+     * @return
+     */
+    int
+    method() const
+    {
+      return method_;
+    }
+  protected:
+    void
+    initialize_cleaner_impl() const;
+
+    int depth_;
+    int window_size_;
+    int method_;
+    mutable void* depth_cleaner_impl_;
+  };
+
   /**
    * @param depth the depth image
    * @param K
