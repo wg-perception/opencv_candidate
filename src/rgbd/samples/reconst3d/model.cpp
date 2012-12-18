@@ -77,7 +77,6 @@ void voxelFilter(pcl::PointCloud<T>& cloud, double gridSize)
         typename pcl::PointCloud<T>::ConstPtr cloudPtr = boost::make_shared<const pcl::PointCloud<T> >(cloud);
         pcl::PointCloud<T> cloudDownsampled;
         pcl::VoxelGrid<T> voxelGridFilter;
-        voxelGridFilter.setFilterFieldName("z");
         voxelGridFilter.setLeafSize(gridSize, gridSize, gridSize);
         voxelGridFilter.setDownsampleAllData(true);
         voxelGridFilter.setInputCloud(cloudPtr);

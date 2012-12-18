@@ -119,7 +119,7 @@ void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
     computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
                     maxDepthDiff, corresps);
 
-    const Point3f Oz_inv(0,0,-1);
+    const Point3f Oz_inv(0,0,-1); // TODO replace by vector to camera position?
     for(int v0 = 0; v0 < corresps.rows; v0++)
     {
         for(int u0 = 0; u0 < corresps.cols; u0++)
@@ -128,6 +128,7 @@ void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
             if(c != -1)
             {
                 Point3f curNormal = normals0.at<Point3f>(v0,u0);
+                curNormal *= 1./cv::norm(curNormal);
                 if(std::abs(curNormal.ddot(Oz_inv)) < std::cos(maxNormalAngleDev / 180 * CV_PI))
                 {
                     corresps.at<int>(v0, u0) = -1;
@@ -138,6 +139,7 @@ void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
                 get2shorts(c, u1, v1);
 
                 Point3f transfPrevNormal = transformedNormals1.at<Point3f>(v1,u1);
+                transfPrevNormal *= 1./cv::norm(transfPrevNormal);
                 if(std::abs(curNormal.ddot(transfPrevNormal)) < std::cos(maxNormalsDiff / 180 * CV_PI))
                 {
                     corresps.at<int>(v0, u0) = -1;
@@ -324,6 +326,7 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                         perspectiveTransform(vector<Point3f>(1, prevNormals.at<Point3f>(v1,u1)),
                                                              tp, refinedPoses[prevFrameIdx]);
                                         CV_Assert(isValidDepth(tp[0].z));
+                                        tp[0] *= 1./cv::norm(tp[0]);
                                         global_norm_prev = cvtPoint_ocv2egn(tp[0]);
 
                                         perspectiveTransform(vector<Point3f>(1, curCloud.at<Point3f>(v0,u0)),
@@ -332,6 +335,7 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                         pt_cur = cvtPoint_ocv2egn(tp[0]);
                                         perspectiveTransform(vector<Point3f>(1, curNormals.at<Point3f>(v0,u0)),
                                                              tp, refinedPoses[currFrameIdx]);
+                                        tp[0] *= 1./cv::norm(tp[0]);
                                         CV_Assert(isValidDepth(tp[0].z));
                                         norm_cur = cvtPoint_ocv2egn(tp[0]);
                                     }

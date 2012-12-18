@@ -182,13 +182,16 @@ void refineGraphSE3Segment(const vector<Mat>& odometryPoses,
     std::copy(partiallyRefinedPoses.begin(), partiallyRefinedPoses.end(), refinedAllPoses.begin());
     for(size_t ki = 1; ki < sortedRefinedFrameIndices.size(); ki++)
     {
+        int startIndex = sortedRefinedFrameIndices[ki-1];
+        int endIndex = sortedRefinedFrameIndices[ki];
+
+        if(endIndex - startIndex == 1)
+            continue;
+
         G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
         G2OBlockSolver* blockSolver = createBlockSolver(linearSolver);
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
-
-        int startIndex = sortedRefinedFrameIndices[ki-1];
-        int endIndex = sortedRefinedFrameIndices[ki];
 
         CV_Assert(addGraphVertex(optimizer, startIndex, partiallyRefinedPoses[startIndex]));
         optimizer->vertex(startIndex)->setFixed(true); //fix at origin

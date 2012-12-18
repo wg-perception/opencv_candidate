@@ -78,13 +78,24 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
 
         // read depth
         {
-            const string depthPath = "depth_image_" + imageIndices[i] + ".xml.gz";
             Mat depth;
+            string depthPath = "depth_image_" + imageIndices[i] + ".xml.gz";
             FileStorage fs(dirname + "/" + depthPath, FileStorage::READ);
-            CV_Assert(fs.isOpened());
-#if 1
-            fs["depth_image"] >> depth;
-#else
+            if(fs.isOpened())
+            {
+                fs["depth_image"] >> depth;
+            }
+            else
+            {
+                depthPath = "depth_" + imageIndices[i] + ".png";
+                depth = imread(dirname + "/" + depthPath, -1);
+                CV_Assert(!depth.empty());
+                Mat depth_flt;
+                depth.convertTo(depth_flt, CV_32FC1, 0.001);
+                depth_flt.setTo(std::numeric_limits<float>::quiet_NaN(), depth == 0);
+                depth = depth_flt;
+            }
+#if 0
             cout << "Bilateral iltering" << endl;
             fs["depth_image"] >> depth;
 
