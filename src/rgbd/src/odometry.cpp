@@ -445,35 +445,17 @@ void computeProjectiveMatrix(const Mat& ksi, Mat& Rt)
 #endif
 }
 
-static inline
-void set2shorts(int& dst, int short_v1, int short_v2)
-{
-    unsigned short* ptr = reinterpret_cast<unsigned short*>(&dst);
-    ptr[0] = static_cast<unsigned short>(short_v1);
-    ptr[1] = static_cast<unsigned short>(short_v2);
-}
-
-static inline
-void get2shorts(int src, int& short_v1, int& short_v2)
-{
-    typedef union { int vint32; unsigned short vuint16[2]; } s32tou16;
-    const unsigned short* ptr = (reinterpret_cast<s32tou16*>(&src))->vuint16;
-    short_v1 = ptr[0];
-    short_v2 = ptr[1];
-}
-
 static
-int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
-                    const Mat& depth0, const Mat& validMask0,
-                    const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
-                    Mat& corresps)
+void computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
+                     const Mat& depth0, const Mat& validMask0,
+                     const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
+                     Mat& _corresps)
 {
     CV_Assert(K.type() == CV_64FC1);
     CV_Assert(K_inv.type() == CV_64FC1);
     CV_Assert(Rt.type() == CV_64FC1);
 
-    corresps.create(depth1.size(), CV_32SC1);
-    corresps.setTo(-1);
+    Mat corresps(depth1.size(), CV_16SC2, Scalar::all(-1));
     
     Rect r(0, 0, depth1.cols, depth1.rows);
     Mat Kt = Rt(Rect(3,0,1,3)).clone();
@@ -518,12 +500,15 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
             if(mask1_row[u1])
             {
                 CV_DbgAssert(!cvIsNaN(d1));
-                float transformed_d1 = static_cast<float>(d1 * (KRK_inv6_u1[u1] + KRK_inv7_v1_plus_KRK_inv8[v1]) + Kt_ptr[2]);
+                float transformed_d1 = static_cast<float>(d1 * (KRK_inv6_u1[u1] + KRK_inv7_v1_plus_KRK_inv8[v1]) + 
+                                                          Kt_ptr[2]);
                 if(transformed_d1 > 0)
                 {
                     float transformed_d1_inv = 1.f / transformed_d1;
-                    int u0 = cvRound(transformed_d1_inv * (d1 * (KRK_inv0_u1[u1] + KRK_inv1_v1_plus_KRK_inv2[v1]) + Kt_ptr[0]));
-                    int v0 = cvRound(transformed_d1_inv * (d1 * (KRK_inv3_u1[u1] + KRK_inv4_v1_plus_KRK_inv5[v1]) + Kt_ptr[1]));
+                    int u0 = cvRound(transformed_d1_inv * (d1 * (KRK_inv0_u1[u1] + KRK_inv1_v1_plus_KRK_inv2[v1]) + 
+                                                           Kt_ptr[0]));
+                    int v0 = cvRound(transformed_d1_inv * (d1 * (KRK_inv3_u1[u1] + KRK_inv4_v1_plus_KRK_inv5[v1]) + 
+                                                           Kt_ptr[1]));
                     
                     if(r.contains(Point(u0,v0)))
                     {
@@ -531,11 +516,10 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
                         if(validMask0.at<uchar>(v0, u0) && std::abs(transformed_d1 - d0) <= maxDepthDiff)
                         {
                             CV_DbgAssert(!cvIsNaN(d0));
-                            int c = corresps.at<int>(v0,u0);
-                            if(c != -1)
+                            Vec2s& c = corresps.at<Vec2s>(v0,u0);
+                            if(c[0] != -1)
                             {
-                                int exist_u1, exist_v1;
-                                get2shorts(c, exist_u1, exist_v1);
+                                int exist_u1 = c[0], exist_v1 = c[1];
 
                                 float exist_d1 = (float)(depth1.at<float>(exist_v1,exist_u1) * 
                                     (KRK_inv6_u1[exist_u1] + KRK_inv7_v1_plus_KRK_inv8[exist_v1]) + Kt_ptr[2]);
@@ -546,14 +530,26 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
                             else
                                 correspCount++;
 
-                            set2shorts(corresps.at<int>(v0,u0), u1, v1);
+                            c = Vec2s(u1,v1);
                         }
                     }
                 }
             }
         }
     }
-    return correspCount;
+
+    _corresps.create(correspCount, 1, CV_32SC4);
+    Vec4i * corresps_ptr = _corresps.ptr<Vec4i>();
+    for(int v0 = 0, i = 0; v0 < corresps.rows; v0++)
+    {
+        const Vec2s* corresps_row = corresps.ptr<Vec2s>(v0);
+        for(int u0 = 0; u0 < corresps.cols; u0++)
+        {
+            const Vec2s& c = corresps_row[u0];
+            if(c[0] != -1)
+                corresps_ptr[i++] = Vec4i(u0,v0,c[0],c[1]);
+        }
+    }
 }
 
 static inline
@@ -632,134 +628,136 @@ void (*CalcICPEquationCoeffsPtr)(double*, const Point3f&, const Vec3f&);
 static 
 void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
                const Mat& image1, const Mat& dI_dx1, const Mat& dI_dy1,
-               const Mat& corresps, int correspsCount,
-               double fx, double fy, double sobelScale,
-               Mat& A, Mat& B, CalcRgbdEquationCoeffsPtr func, int transformDim)
+               const Mat& corresps, double fx, double fy, double sobelScale,
+               Mat& AtA, Mat& AtB, CalcRgbdEquationCoeffsPtr func, int transformDim)
 {
-    A.create(correspsCount, transformDim, CV_64FC1);
-    B.create(correspsCount, 1, CV_64FC1);
+    AtA = Mat(transformDim, transformDim, CV_64FC1, Scalar(0));
+    AtB = Mat(transformDim, 1, CV_64FC1, Scalar(0));
+    double* AtB_ptr = AtB.ptr<double>();
+
+    const int correspsCount = corresps.rows;
+
+    AutoBuffer<float> diffs(correspsCount);
+    float* diffs_ptr = diffs;
+
+    const Vec4i* corresps_ptr = corresps.ptr<Vec4i>();
 
     double sigma = 0;
-    int pointCount = 0;
-    AutoBuffer<float> diffs(correspsCount);
-    float * diffs_ptr = diffs;
-    for(int v0 = 0; v0 < corresps.rows; v0++)
+    for(int correspIndex = 0; correspIndex < corresps.rows; correspIndex++)
     {
-        const int* corresps_row = corresps.ptr<int>(v0);
-        const uchar* image0_row = image0.ptr<uchar>(v0);
-        for(int u0 = 0; u0 < corresps.cols; u0++)
-        {
-            if(corresps_row[u0] != -1)
-            {
-                int u1, v1;
-                get2shorts(corresps_row[u0], u1, v1);
-
-                diffs_ptr[pointCount] = static_cast<float>(static_cast<int>(image0_row[u0]) - static_cast<int>(image1.at<uchar>(v1,u1)));
-                sigma += diffs_ptr[pointCount] * diffs_ptr[pointCount];
-                pointCount++;
-            }
-        }
+         const Vec4i& c = corresps_ptr[correspIndex];
+         int u0 = c[0], v0 = c[1];
+         int u1 = c[2], v1 = c[3];
+              
+         diffs_ptr[correspIndex] = static_cast<float>(static_cast<int>(image0.at<uchar>(v0,u0)) - 
+                                                      static_cast<int>(image1.at<uchar>(v1,u1)));
+         sigma += diffs_ptr[correspIndex] * diffs_ptr[correspIndex];
     }
-    sigma = std::sqrt(sigma/pointCount);
+    sigma = std::sqrt(sigma/correspsCount);
 
-    pointCount = 0;
-    for(int v0 = 0; v0 < corresps.rows; v0++)
+    vector<double> A_buf(transformDim);
+    double* A_ptr = &A_buf[0];
+    for(int correspIndex = 0; correspIndex < corresps.rows; correspIndex++)
     {
-        const int* corresps_row = corresps.ptr<int>(v0);
-        const Point3f* cloud0_row = cloud0.ptr<Point3f>(v0);
-        for(int u0 = 0; u0 < corresps.cols; u0++)
+         const Vec4i& c = corresps_ptr[correspIndex];
+         int u0 = c[0], v0 = c[1];
+         int u1 = c[2], v1 = c[3];
+
+         double w = sigma + std::abs(diffs_ptr[correspIndex]);
+         w = w > DBL_EPSILON ? 1./w : 1.;
+
+         double w_sobelScale = w * sobelScale;
+         func(A_ptr,
+              w_sobelScale * dI_dx1.at<short int>(v1,u1),
+              w_sobelScale * dI_dy1.at<short int>(v1,u1),
+              cloud0.at<Point3f>(v0,u0), fx, fy);
+
+        for(int y = 0; y < transformDim; y++)
         {
-            if(corresps_row[u0] != -1)
-            {
-                int u1, v1;
-                get2shorts(corresps_row[u0], u1, v1);
+            double* AtA_ptr = AtA.ptr<double>(y);
+            for(int x = y; x < transformDim; x++)
+                AtA_ptr[x] += A_ptr[y] * A_ptr[x];
 
-                double w = sigma + std::abs(diffs_ptr[pointCount]);
-                w = w > DBL_EPSILON ? 1./w : 1.;
-
-                double w_sobelScale = w * sobelScale;
-                func(A.ptr<double>(pointCount),
-                     w_sobelScale * dI_dx1.at<short int>(v1,u1),
-                     w_sobelScale * dI_dy1.at<short int>(v1,u1),
-                     cloud0_row[u0], fx, fy);
-
-                B.at<double>(pointCount) = w * diffs_ptr[pointCount];
-                pointCount++;
-            }
+            AtB_ptr[y] += A_ptr[y] * w * diffs_ptr[correspIndex];
         }
-    }
+    }		
+    
+    for(int y = 0; y < transformDim; y++)
+        for(int x = y+1; x < transformDim; x++)
+            AtA.at<double>(x,y) = AtA.at<double>(y,x);
 }
 
 static
 void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
                const Mat& levelCloud1, const Mat& levelNormals1,
-               const Mat& corresps, int correspsCount,
-               Mat& A, Mat& B, CalcICPEquationCoeffsPtr func, int transformDim)
+               const Mat& corresps,
+               Mat& AtA, Mat& AtB, CalcICPEquationCoeffsPtr func, int transformDim)
 {
-    A.create(correspsCount, transformDim, CV_64FC1);
-    B.create(correspsCount, 1, CV_64FC1);
+    AtA = Mat(transformDim, transformDim, CV_64FC1, Scalar(0));
+    AtB = Mat(transformDim, 1, CV_64FC1, Scalar(0));
+    double* AtB_ptr = AtB.ptr<double>();
+
+    const int correspsCount = corresps.rows;
 
     CV_Assert(Rt.type() == CV_64FC1);
     const double * Rt_ptr = reinterpret_cast<const double*>(Rt.data);
 
-    double sigma = 0;
-    int pointCount = 0;
     AutoBuffer<float> diffs(correspsCount);
     float * diffs_ptr = diffs;
+
     AutoBuffer<Point3f> transformedPoints0(correspsCount);
     Point3f * tps0_ptr = transformedPoints0;
-    for(int v0 = 0; v0 < corresps.rows; v0++)
+
+    const Vec4i* corresps_ptr = corresps.ptr<Vec4i>();
+
+    double sigma = 0;
+    for(int correspIndex = 0; correspIndex < corresps.rows; correspIndex++)
     {
-        const int* corresps_row = corresps.ptr<int>(v0);
-        const Point3f* levelCloud0_row = levelCloud0.ptr<Point3f>(v0);
-        for(int u0 = 0; u0 < corresps.cols; u0++)
+        const Vec4i& c = corresps_ptr[correspIndex];
+        int u0 = c[0], v0 = c[1];
+        int u1 = c[2], v1 = c[3];
+
+        const Point3f& p0 = levelCloud0.at<Point3f>(v0,u0);
+        Point3f tp0;
+        tp0.x = p0.x * Rt_ptr[0] + p0.y * Rt_ptr[1] + p0.z * Rt_ptr[2] + Rt_ptr[3];
+        tp0.y = p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7];
+        tp0.z = p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11];
+
+        Vec3f n1 = levelNormals1.at<Vec3f>(v1, u1);
+        Point3f v = levelCloud1.at<Point3f>(v1,u1) - tp0;
+
+        tps0_ptr[correspIndex] = tp0;
+        diffs_ptr[correspIndex] = n1[0] * v.x + n1[1] * v.y + n1[2] * v.z;
+        sigma += diffs_ptr[correspIndex] * diffs_ptr[correspIndex];
+    }
+
+    sigma = std::sqrt(sigma/correspsCount);
+
+    vector<double> A_buf(transformDim);
+    double* A_ptr = &A_buf[0];
+    for(int correspIndex = 0; correspIndex < corresps.rows; correspIndex++)
+    {
+        const Vec4i& c = corresps_ptr[correspIndex];
+        int u1 = c[2], v1 = c[3];
+
+        double w = sigma + std::abs(diffs_ptr[correspIndex]);
+        w = w > DBL_EPSILON ? 1./w : 1.;
+
+        func(A_ptr, tps0_ptr[correspIndex], levelNormals1.at<Vec3f>(v1, u1) * w);
+
+        for(int y = 0; y < transformDim; y++)
         {
-            if(corresps_row[u0] != -1)
-            {
-                int u1, v1;
-                get2shorts(corresps_row[u0], u1, v1);
+            double* AtA_ptr = AtA.ptr<double>(y);
+            for(int x = y; x < transformDim; x++)
+                AtA_ptr[x] += A_ptr[y] * A_ptr[x];
 
-                const Point3f& p0 = levelCloud0_row[u0];
-                Point3f tp0; 
-                tp0.x = p0.x * Rt_ptr[0] + p0.y * Rt_ptr[1] + p0.z * Rt_ptr[2] + Rt_ptr[3];
-                tp0.y = p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7];
-                tp0.z = p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11];
-
-                Vec3f n1 = levelNormals1.at<Vec3f>(v1, u1);
-                Point3f v = levelCloud1.at<Point3f>(v1,u1) - tp0;
-                
-                tps0_ptr[pointCount] = tp0;
-                diffs_ptr[pointCount] = n1[0] * v.x + n1[1] * v.y + n1[2] * v.z;
-                sigma += diffs_ptr[pointCount] * diffs_ptr[pointCount];
-                
-                pointCount++;
-            }
+            AtB_ptr[y] += A_ptr[y] * w * diffs_ptr[correspIndex];
         }
     }
 
-    sigma = std::sqrt(sigma/pointCount);
-
-    pointCount = 0;
-    for(int v0 = 0; v0 < corresps.rows; v0++)
-    {
-        const int* corresps_row = corresps.ptr<int>(v0);
-        for(int u0 = 0; u0 < corresps.cols; u0++)
-        {
-            if(corresps_row[u0] != -1)
-            {
-                int u1, v1;
-                get2shorts(corresps_row[u0], u1, v1);
-
-                double w = sigma + std::abs(diffs_ptr[pointCount]);
-                w = w > DBL_EPSILON ? 1./w : 1.;
-
-                func(A.ptr<double>(pointCount), tps0_ptr[pointCount], levelNormals1.at<Vec3f>(v1, u1) * w);
-                B.at<double>(pointCount) = w * diffs_ptr[pointCount];
-
-                pointCount++;
-            }
-        }
-    }
+    for(int y = 0; y < transformDim; y++)
+        for(int x = y+1; x < transformDim; x++)
+            AtA.at<double>(x,y) = AtA.at<double>(y,x);
 }
 
 static
@@ -832,7 +830,6 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
     {
         const Mat& levelCameraMatrix = pyramidCameraMatrix[level];
         const Mat& levelCameraMatrix_inv = levelCameraMatrix.inv(DECOMP_SVD);
-
         const Mat& srcLevelDepth = srcFrame->pyramidDepth[level];
         const Mat& dstLevelDepth = dstFrame->pyramidDepth[level];
 
@@ -840,51 +837,45 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
         const double fy = levelCameraMatrix.at<double>(1,1);
         const double determinantThreshold = 1e-6;
 
-        Mat A_rgbd, B_rgbd, A_icp, B_icp;
+        Mat AtA_rgbd, AtB_rgbd, AtA_icp, AtB_icp;
         Mat corresps_rgbd, corresps_icp;
-        if(method & RGBD_ODOMETRY)
-            corresps_rgbd.create(srcLevelDepth.size(), CV_32SC1);
-        if(method & ICP_ODOMETRY)
-            corresps_icp.create(srcLevelDepth.size(), CV_32SC1);
 
         // Run transformation search on current level iteratively.
         for(int iter = 0; iter < iterCounts[level]; iter ++)
         {
-            int correspsCount_rgbd = 0, correspsCount_icp = 0;
             Mat resultRt_inv = resultRt.inv(DECOMP_SVD);
 
             if(method & RGBD_ODOMETRY)
-            {
-                correspsCount_rgbd = computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
-                                                     srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidTexturedMask[level],
-                                                     maxDepthDiff, corresps_rgbd);
-            }
+                computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
+                                srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidTexturedMask[level],
+                                maxDepthDiff, corresps_rgbd);
 
             if(method & ICP_ODOMETRY)
-                correspsCount_icp = computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
-                                                    srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidNormalsMask[level],
-                                                    maxDepthDiff, corresps_icp);
+                computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt_inv,
+                                srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidNormalsMask[level],
+                                maxDepthDiff, corresps_icp);
 
-            if(correspsCount_rgbd < transformDim && correspsCount_icp < transformDim)
+            if(corresps_rgbd.rows < transformDim && corresps_icp.rows < transformDim)
                 break;
 
             Mat AtA(transformDim, transformDim, CV_64FC1, Scalar(0)), AtB(transformDim, 1, CV_64FC1, Scalar(0));
-            if(correspsCount_rgbd >= transformDim)
+            if(corresps_rgbd.rows >= transformDim)
             {
                 calcRgbdLsmMatrices(srcFrame->pyramidImage[level], srcFrame->pyramidCloud[level],
                                     dstFrame->pyramidImage[level], dstFrame->pyramid_dI_dx[level], dstFrame->pyramid_dI_dy[level],
-                                    corresps_rgbd, correspsCount_rgbd, fx, fy, sobelScale,
-                                    A_rgbd, B_rgbd, rgbdEquationFuncPtr, transformDim);
-                AtA += A_rgbd.t() * A_rgbd;
-                AtB += A_rgbd.t() * B_rgbd;
+                                    corresps_rgbd, fx, fy, sobelScale,
+                                    AtA_rgbd, AtB_rgbd, rgbdEquationFuncPtr, transformDim);
+
+                AtA += AtA_rgbd;
+                AtB += AtB_rgbd;
             }
-            if(correspsCount_icp >= transformDim)
+            if(corresps_icp.rows >= transformDim)
             {
                 calcICPLsmMatrices(srcFrame->pyramidCloud[level], resultRt,
                                    dstFrame->pyramidCloud[level], dstFrame->pyramidNormals[level],
-                                   corresps_icp, correspsCount_icp, A_icp, B_icp, icpEquationFuncPtr, transformDim);
-                AtA += A_icp.t() * A_icp;
-                AtB += A_icp.t() * B_icp;
+                                   corresps_icp, AtA_icp, AtB_icp, icpEquationFuncPtr, transformDim);
+                AtA += AtA_icp;
+                AtB += AtB_icp;
             }
 
             bool solutionExist = solveSystem(AtA, AtB, determinantThreshold, ksi);
