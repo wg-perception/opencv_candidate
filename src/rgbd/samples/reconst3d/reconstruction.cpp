@@ -26,7 +26,8 @@ static Mat
 refineObjectMask(const Mat& initObjectMask)
 {
     vector<vector<Point> > contours;
-    findContours(initObjectMask, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+    Mat initObjectMaskClone = initObjectMask.clone();
+    findContours(initObjectMaskClone, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
     if(contours.empty())
         return initObjectMask.clone();
 
