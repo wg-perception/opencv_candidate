@@ -265,8 +265,35 @@ void preparePyramidSobel(const vector<Mat>& pyramidImage, int dx, int dy, vector
 }
 
 static
+void randomSubsetOfMask(Mat& mask, float part)
+{
+    const int minPointsCount = 1000; // minimum point count (we can process them fast)
+    const int nonzeros = countNonZero(mask);
+    const int needCount = std::max(minPointsCount, int(mask.total() * part));
+    if(needCount < nonzeros)
+    {
+        RNG rng;
+        Mat subset(mask.size(), CV_8UC1, Scalar(0));
+
+        int subsetSize = 0;
+        while(subsetSize < needCount)
+        {
+            int y = rng(mask.rows);
+            int x = rng(mask.cols);
+            if(mask.at<uchar>(y,x))
+            {
+                subset.at<uchar>(y,x) = 255;
+                mask.at<uchar>(y,x) = 0;
+                subsetSize++;
+            }
+        }
+        mask = subset;
+    }
+}
+
+static
 void preparePyramidTexturedMask(const vector<Mat>& pyramid_dI_dx, const vector<Mat>& pyramid_dI_dy,
-                                const vector<float>& minGradMagnitudes, const vector<Mat>& pyramidMask,
+                                const vector<float>& minGradMagnitudes, const vector<Mat>& pyramidMask, double maxPointsPart,
                                 vector<Mat>& pyramidTexturedMask)
 {
     if(!pyramidTexturedMask.empty())
@@ -305,6 +332,8 @@ void preparePyramidTexturedMask(const vector<Mat>& pyramid_dI_dx, const vector<M
                 }
             }
             pyramidTexturedMask[i] = texturedMask & pyramidMask[i];
+
+            randomSubsetOfMask(pyramidTexturedMask[i], maxPointsPart);
         }
     }
 }
@@ -344,34 +373,7 @@ void preparePyramidNormals(const Mat& normals, const vector<Mat>& pyramidDepth, 
 }
 
 static
-void randomSubsetOfMask(Mat& mask, float part)
-{
-    const int minPointsCount = 1000; // minimum point count (we can process them fast)
-    const int nonzeros = countNonZero(mask);
-    const int needCount = std::max(minPointsCount, int(mask.total() * part));
-    if(needCount < nonzeros)
-    {
-        RNG rng;
-        Mat subset(mask.size(), CV_8UC1, Scalar(0));
-
-        int subsetSize = 0;
-        while(subsetSize < needCount)
-        {
-            int y = rng(mask.rows);
-            int x = rng(mask.cols);
-            if(mask.at<uchar>(y,x))
-            {
-                subset.at<uchar>(y,x) = 255;
-                mask.at<uchar>(y,x) = 0;
-                subsetSize++;
-            }
-        }
-        mask = subset;
-    }
-}
-
-static
-void preparePyramidNormalsMask(const vector<Mat>& pyramidNormals, const vector<Mat>& pyramidMask, double pointsPart,
+void preparePyramidNormalsMask(const vector<Mat>& pyramidNormals, const vector<Mat>& pyramidMask, double maxPointsPart,
                                vector<Mat>& pyramidNormalsMask)
 {
     if(!pyramidNormalsMask.empty())
@@ -407,7 +409,7 @@ void preparePyramidNormalsMask(const vector<Mat>& pyramidNormals, const vector<M
                     }
                 }
             }
-            randomSubsetOfMask(normalsMask, pointsPart);
+            randomSubsetOfMask(normalsMask, maxPointsPart);
         }
     }
 }
@@ -420,7 +422,7 @@ void computeProjectiveMatrix(const Mat& ksi, Mat& Rt)
     CV_Assert(ksi.size() == Size(1,6) && ksi.type() == CV_64FC1);
 
 #ifdef HAVE_EIGEN3_HERE
-    const double* ksi_ptr = reinterpret_cast<const double*>(ksi.ptr(0));
+    const double* ksi_ptr = ksi.ptr<const double>();
     Eigen::Matrix<double,4,4> twist, g;
     twist << 0.,          -ksi_ptr[2], ksi_ptr[1],  ksi_ptr[3],
              ksi_ptr[2],  0.,          -ksi_ptr[0], ksi_ptr[4],
@@ -460,7 +462,7 @@ void computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
     Rect r(0, 0, depth1.cols, depth1.rows);
     Mat Kt = Rt(Rect(3,0,1,3)).clone();
     Kt = K * Kt;
-    const double * Kt_ptr = reinterpret_cast<const double *>(Kt.ptr());
+    const double * Kt_ptr = Kt.ptr<const double>();
 
     AutoBuffer<float> buf(3 * (depth1.cols + depth1.rows));
     float *KRK_inv0_u1 = buf;
@@ -473,7 +475,7 @@ void computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
         Mat R = Rt(Rect(0,0,3,3)).clone();
 
         Mat KRK_inv = K * R * K_inv;
-        const double * KRK_inv_ptr = reinterpret_cast<const double *>(KRK_inv.ptr());
+        const double * KRK_inv_ptr = KRK_inv.ptr<const double>();
         for(int u1 = 0; u1 < depth1.cols; u1++)
         {
             KRK_inv0_u1[u1] = KRK_inv_ptr[0] * u1;
@@ -626,7 +628,7 @@ typedef
 void (*CalcICPEquationCoeffsPtr)(double*, const Point3f&, const Vec3f&);
 
 static 
-void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
+void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0, const Mat& Rt,
                const Mat& image1, const Mat& dI_dx1, const Mat& dI_dy1,
                const Mat& corresps, double fx, double fy, double sobelScale,
                Mat& AtA, Mat& AtB, CalcRgbdEquationCoeffsPtr func, int transformDim)
@@ -636,6 +638,9 @@ void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
     double* AtB_ptr = AtB.ptr<double>();
 
     const int correspsCount = corresps.rows;
+
+    CV_Assert(Rt.type() == CV_64FC1);
+    const double * Rt_ptr = Rt.ptr<const double>();
 
     AutoBuffer<float> diffs(correspsCount);
     float* diffs_ptr = diffs;
@@ -657,6 +662,7 @@ void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
 
     vector<double> A_buf(transformDim);
     double* A_ptr = &A_buf[0];
+
     for(int correspIndex = 0; correspIndex < corresps.rows; correspIndex++)
     {
          const Vec4i& c = corresps_ptr[correspIndex];
@@ -667,10 +673,17 @@ void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
          w = w > DBL_EPSILON ? 1./w : 1.;
 
          double w_sobelScale = w * sobelScale;
+
+         const Point3f& p0 = cloud0.at<Point3f>(v0,u0);
+         Point3f tp0;
+         tp0.x = p0.x * Rt_ptr[0] + p0.y * Rt_ptr[1] + p0.z * Rt_ptr[2] + Rt_ptr[3];
+         tp0.y = p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7];
+         tp0.z = p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11];
+
          func(A_ptr,
               w_sobelScale * dI_dx1.at<short int>(v1,u1),
               w_sobelScale * dI_dy1.at<short int>(v1,u1),
-              cloud0.at<Point3f>(v0,u0), fx, fy);
+              tp0, fx, fy);
 
         for(int y = 0; y < transformDim; y++)
         {
@@ -688,10 +701,10 @@ void calcRgbdLsmMatrices(const Mat& image0, const Mat& cloud0,
 }
 
 static
-void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
-               const Mat& levelCloud1, const Mat& levelNormals1,
-               const Mat& corresps,
-               Mat& AtA, Mat& AtB, CalcICPEquationCoeffsPtr func, int transformDim)
+void calcICPLsmMatrices(const Mat& cloud0, const Mat& Rt,
+                        const Mat& cloud1, const Mat& normals1,
+                        const Mat& corresps,
+                        Mat& AtA, Mat& AtB, CalcICPEquationCoeffsPtr func, int transformDim)
 {
     AtA = Mat(transformDim, transformDim, CV_64FC1, Scalar(0));
     AtB = Mat(transformDim, 1, CV_64FC1, Scalar(0));
@@ -700,7 +713,7 @@ void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
     const int correspsCount = corresps.rows;
 
     CV_Assert(Rt.type() == CV_64FC1);
-    const double * Rt_ptr = reinterpret_cast<const double*>(Rt.data);
+    const double * Rt_ptr = Rt.ptr<const double>();
 
     AutoBuffer<float> diffs(correspsCount);
     float * diffs_ptr = diffs;
@@ -717,14 +730,14 @@ void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
         int u0 = c[0], v0 = c[1];
         int u1 = c[2], v1 = c[3];
 
-        const Point3f& p0 = levelCloud0.at<Point3f>(v0,u0);
+        const Point3f& p0 = cloud0.at<Point3f>(v0,u0);
         Point3f tp0;
         tp0.x = p0.x * Rt_ptr[0] + p0.y * Rt_ptr[1] + p0.z * Rt_ptr[2] + Rt_ptr[3];
         tp0.y = p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7];
         tp0.z = p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11];
 
-        Vec3f n1 = levelNormals1.at<Vec3f>(v1, u1);
-        Point3f v = levelCloud1.at<Point3f>(v1,u1) - tp0;
+        Vec3f n1 = normals1.at<Vec3f>(v1, u1);
+        Point3f v = cloud1.at<Point3f>(v1,u1) - tp0;
 
         tps0_ptr[correspIndex] = tp0;
         diffs_ptr[correspIndex] = n1[0] * v.x + n1[1] * v.y + n1[2] * v.z;
@@ -743,7 +756,7 @@ void calcICPLsmMatrices(const Mat& levelCloud0, const Mat& Rt,
         double w = sigma + std::abs(diffs_ptr[correspIndex]);
         w = w > DBL_EPSILON ? 1./w : 1.;
 
-        func(A_ptr, tps0_ptr[correspIndex], levelNormals1.at<Vec3f>(v1, u1) * w);
+        func(A_ptr, tps0_ptr[correspIndex], normals1.at<Vec3f>(v1, u1) * w);
 
         for(int y = 0; y < transformDim; y++)
         {
@@ -824,7 +837,7 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
 
     Mat resultRt = initRt.empty() ? Mat::eye(4,4,CV_64FC1) : initRt.clone();
     Mat currRt, ksi;
-    
+
     bool isOk = false;
     for(int level = iterCounts.size() - 1; level >= 0; level--)
     {
@@ -861,7 +874,7 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
             Mat AtA(transformDim, transformDim, CV_64FC1, Scalar(0)), AtB(transformDim, 1, CV_64FC1, Scalar(0));
             if(corresps_rgbd.rows >= transformDim)
             {
-                calcRgbdLsmMatrices(srcFrame->pyramidImage[level], srcFrame->pyramidCloud[level],
+                calcRgbdLsmMatrices(srcFrame->pyramidImage[level], srcFrame->pyramidCloud[level], resultRt,
                                     dstFrame->pyramidImage[level], dstFrame->pyramid_dI_dx[level], dstFrame->pyramid_dI_dy[level],
                                     corresps_rgbd, fx, fy, sobelScale,
                                     AtA_rgbd, AtB_rgbd, rgbdEquationFuncPtr, transformDim);
@@ -910,7 +923,7 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
             deltaRt = resultRt;
         else
             deltaRt = resultRt * initRt.inv(DECOMP_SVD);
-        
+
         isOk = testDeltaTransformation(deltaRt, maxTranslation, maxRotation);
     }
 
@@ -1054,6 +1067,7 @@ RgbdOdometry::RgbdOdometry() :
     minDepth(DEFAULT_MIN_DEPTH()),
     maxDepth(DEFAULT_MAX_DEPTH()),
     maxDepthDiff(DEFAULT_MAX_DEPTH_DIFF()),
+    maxPointsPart(DEFAULT_MAX_POINTS_PART()),
     transformType(Odometry::RIGID_BODY_MOTION),
     maxTranslation(DEFAULT_MAX_TRANSLATION()),
     maxRotation(DEFAULT_MAX_ROTATION())
@@ -1067,10 +1081,12 @@ RgbdOdometry::RgbdOdometry(const Mat& _cameraMatrix,
                            float _minDepth, float _maxDepth, float _maxDepthDiff,
                            const vector<int>& _iterCounts,
                            const vector<float>& _minGradientMagnitudes,
+                           float _maxPointsPart,
                            int _transformType) :
                            minDepth(_minDepth), maxDepth(_maxDepth), maxDepthDiff(_maxDepthDiff),
                            iterCounts(Mat(_iterCounts).clone()),
                            minGradientMagnitudes(Mat(_minGradientMagnitudes).clone()),
+                           maxPointsPart(_maxPointsPart),
                            cameraMatrix(_cameraMatrix), transformType(_transformType),
                            maxTranslation(DEFAULT_MAX_TRANSLATION()), maxRotation(DEFAULT_MAX_ROTATION())
 {
@@ -1128,7 +1144,7 @@ Size RgbdOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) c
         preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
         preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
         preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy, minGradientMagnitudes,
-                                   frame->pyramidMask, frame->pyramidTexturedMask);
+                                   frame->pyramidMask, maxPointsPart, frame->pyramidTexturedMask);
     }
 
     return frame->image.size();
@@ -1136,6 +1152,7 @@ Size RgbdOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) c
 
 void RgbdOdometry::checkParams() const
 {
+    CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
     CV_Assert(cameraMatrix.size() == Size(3,3) && (cameraMatrix.type() == CV_32FC1 || cameraMatrix.type() == CV_64FC1));
     CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
 }
@@ -1148,7 +1165,7 @@ bool RgbdOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<Odo
 //
 ICPOdometry::ICPOdometry() :
     minDepth(DEFAULT_MIN_DEPTH()), maxDepth(DEFAULT_MAX_DEPTH()),
-    maxDepthDiff(DEFAULT_MAX_DEPTH_DIFF()), pointsPart(DEFAULT_USED_POINTS_PART()), transformType(Odometry::RIGID_BODY_MOTION),
+    maxDepthDiff(DEFAULT_MAX_DEPTH_DIFF()), maxPointsPart(DEFAULT_MAX_POINTS_PART()), transformType(Odometry::RIGID_BODY_MOTION),
     maxTranslation(DEFAULT_MAX_TRANSLATION()), maxRotation(DEFAULT_MAX_ROTATION())
 {
     setDefaultIterCounts(iterCounts);
@@ -1156,10 +1173,10 @@ ICPOdometry::ICPOdometry() :
 
 ICPOdometry::ICPOdometry(const Mat& _cameraMatrix,
                          float _minDepth, float _maxDepth, float _maxDepthDiff,
-                         float _pointsPart, const vector<int>& _iterCounts,
+                         float _maxPointsPart, const vector<int>& _iterCounts,
                          int _transformType) :
                          minDepth(_minDepth), maxDepth(_maxDepth), maxDepthDiff(_maxDepthDiff),
-                         pointsPart(_pointsPart), iterCounts(Mat(_iterCounts).clone()),
+                         maxPointsPart(_maxPointsPart), iterCounts(Mat(_iterCounts).clone()),
                          cameraMatrix(_cameraMatrix), transformType(_transformType),
                          maxTranslation(DEFAULT_MAX_TRANSLATION()), maxRotation(DEFAULT_MAX_ROTATION())
 {
@@ -1218,7 +1235,7 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
 
         preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
-        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, pointsPart, frame->pyramidNormalsMask);
+        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, maxPointsPart, frame->pyramidNormalsMask);
     }
 
     return frame->depth.size();
@@ -1226,7 +1243,7 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
 
 void ICPOdometry::checkParams() const
 {
-    CV_Assert(pointsPart > 0. && pointsPart <= 1.);
+    CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
     CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
 }
 
@@ -1238,7 +1255,7 @@ bool ICPOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<Odom
 //
 RgbdICPOdometry::RgbdICPOdometry() :
     minDepth(DEFAULT_MIN_DEPTH()), maxDepth(DEFAULT_MAX_DEPTH()),
-    maxDepthDiff(DEFAULT_MAX_DEPTH_DIFF()), pointsPart(DEFAULT_USED_POINTS_PART()), transformType(Odometry::RIGID_BODY_MOTION),
+    maxDepthDiff(DEFAULT_MAX_DEPTH_DIFF()), maxPointsPart(DEFAULT_MAX_POINTS_PART()), transformType(Odometry::RIGID_BODY_MOTION),
     maxTranslation(DEFAULT_MAX_TRANSLATION()), maxRotation(DEFAULT_MAX_ROTATION())
 {
     setDefaultIterCounts(iterCounts);
@@ -1247,11 +1264,11 @@ RgbdICPOdometry::RgbdICPOdometry() :
 
 RgbdICPOdometry::RgbdICPOdometry(const Mat& _cameraMatrix,
                                  float _minDepth, float _maxDepth, float _maxDepthDiff,
-                                 float _pointsPart, const vector<int>& _iterCounts,
+                                 float _maxPointsPart, const vector<int>& _iterCounts,
                                  const vector<float>& _minGradientMagnitudes,
                                  int _transformType) :
                                  minDepth(_minDepth), maxDepth(_maxDepth), maxDepthDiff(_maxDepthDiff),
-                                 pointsPart(_pointsPart), iterCounts(Mat(_iterCounts).clone()),
+                                 maxPointsPart(_maxPointsPart), iterCounts(Mat(_iterCounts).clone()),
                                  minGradientMagnitudes(Mat(_minGradientMagnitudes).clone()),
                                  cameraMatrix(_cameraMatrix), transformType(_transformType),
                                  maxTranslation(DEFAULT_MAX_TRANSLATION()), maxRotation(DEFAULT_MAX_ROTATION())
@@ -1307,7 +1324,8 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
         preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
         preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
         preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy,
-                                   minGradientMagnitudes, frame->pyramidMask, frame->pyramidTexturedMask);
+                                   minGradientMagnitudes, frame->pyramidMask,
+                                   maxPointsPart, frame->pyramidTexturedMask);
         if(frame->normals.empty())
         {
             if(!frame->pyramidNormals.empty())
@@ -1327,7 +1345,7 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
 
         preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
-        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, pointsPart, frame->pyramidNormalsMask);
+        preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, maxPointsPart, frame->pyramidNormalsMask);
     }
 
     return frame->image.size();
@@ -1335,7 +1353,7 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
 
 void RgbdICPOdometry::checkParams() const
 {
-    CV_Assert(pointsPart > 0. && pointsPart <= 1.);
+    CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
     CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
     CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
 }

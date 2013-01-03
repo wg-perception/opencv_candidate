@@ -408,7 +408,7 @@ namespace cv
       return 0.07f; // in meters
     }
     static inline float
-    DEFAULT_USED_POINTS_PART()
+    DEFAULT_MAX_POINTS_PART()
     {
       return 0.07f; // in [0, 1]
     }
@@ -488,7 +488,8 @@ namespace cv
      */
     RgbdOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
                  float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), const vector<int>& iterCounts = vector<int>(),
-                 const vector<float>& minGradientMagnitudes = vector<float>(), int transformType = RIGID_BODY_MOTION);
+                 const vector<float>& minGradientMagnitudes = vector<float>(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
+                 int transformType = RIGID_BODY_MOTION);
 
     virtual Size
     prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
@@ -511,6 +512,7 @@ namespace cv
     Mat iterCounts;
     /*vector<float>*/
     Mat minGradientMagnitudes;
+    double maxPointsPart;
 
     Mat cameraMatrix;
     int transformType;
@@ -535,7 +537,7 @@ namespace cv
      * @param iterCounts Count of iterations on each pyramid level.
      */
     ICPOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
-                float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float pointsPart = DEFAULT_USED_POINTS_PART(),
+                float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
                 const vector<int>& iterCounts = vector<int>(), int transformType = RIGID_BODY_MOTION);
 
     virtual Size
@@ -556,7 +558,7 @@ namespace cv
     /*float*/
     double minDepth, maxDepth, maxDepthDiff;
     /*float*/
-    double pointsPart;
+    double maxPointsPart;
     /*vector<int>*/
     Mat iterCounts;
 
@@ -587,7 +589,7 @@ namespace cv
      *                              if they have gradient magnitude less than minGradientMagnitudes[level].
      */
     RgbdICPOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
-                    float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float pointsPart = DEFAULT_USED_POINTS_PART(),
+                    float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
                     const vector<int>& iterCounts = vector<int>(),
                     const vector<float>& minGradientMagnitudes = vector<float>(),
                     int transformType = RIGID_BODY_MOTION);
@@ -610,7 +612,7 @@ namespace cv
     /*float*/
     double minDepth, maxDepth, maxDepthDiff;
     /*float*/
-    double pointsPart;
+    double maxPointsPart;
     /*vector<int>*/
     Mat iterCounts;
     /*vector<float>*/
