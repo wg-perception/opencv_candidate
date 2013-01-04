@@ -808,6 +808,7 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
                          double maxTranslation, double maxRotation,
                          int method, int transfromType)
 {
+    const int minOverdetermScale = 20;
     int transformDim = -1;
     CalcRgbdEquationCoeffsPtr rgbdEquationFuncPtr = 0;
     CalcICPEquationCoeffsPtr icpEquationFuncPtr = 0;
@@ -868,7 +869,7 @@ bool RGBDICPOdometryImpl(Mat& Rt, const Mat& initRt,
                                 srcLevelDepth, srcFrame->pyramidMask[level], dstLevelDepth, dstFrame->pyramidNormalsMask[level],
                                 maxDepthDiff, corresps_icp);
 
-            if(corresps_rgbd.rows < transformDim && corresps_icp.rows < transformDim)
+            if(corresps_rgbd.rows < minOverdetermScale * transformDim && corresps_icp.rows < minOverdetermScale * transformDim)
                 break;
 
             Mat AtA(transformDim, transformDim, CV_64FC1, Scalar(0)), AtB(transformDim, 1, CV_64FC1, Scalar(0));
