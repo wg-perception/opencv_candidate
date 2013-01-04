@@ -11,7 +11,7 @@ else()
 endif()
 
 if (${catkin_VERSION} VERSION_GREATER "0.5.28")
-catkin_package(DEPENDS opencv2 libg2o
+catkin_package(DEPENDS OpenCV libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
@@ -20,7 +20,7 @@ catkin_package(DEPENDS opencv2 libg2o
 else()
 catkin_stack()
 catkin_project(opencv_candidate
-               DEPENDS opencv2 libg2o
+               DEPENDS OpenCV libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
