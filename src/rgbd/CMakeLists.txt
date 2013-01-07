@@ -54,11 +54,9 @@ include_directories(SYSTEM ${PCL_INCLUDE_DIRS}
 
 # Find Eigen3
 FIND_PACKAGE(Eigen)
-#FIND_PACKAGE(Cholmod)
-#FIND_PACKAGE(CSparse)
 find_package(libg2o)
 
-include_directories(SYSTEM ${g2o_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS} ${CHOLMOD_INCLUDE_DIR} ${CSPARSE_INCLUDE_DIR})
+include_directories(SYSTEM ${EIGEN_INCLUDE_DIRS})
 
 add_executable(model_capture samples/reconst3d/reconst3d.hpp
                              samples/reconst3d/reconst3d_init.cpp
@@ -79,14 +77,13 @@ add_executable(model_capture samples/reconst3d/reconst3d.hpp
 
                              samples/model_capture.cpp
               )
-target_link_libraries(model_capture ${OpenCV_LIBRARIES}
+target_link_libraries(model_capture ${catkin_LIBRARIES}
+                                    ${OpenCV_LIBRARIES}
                                     opencv_rgbd
-                                    ${PCL_LIBRARIES}
                                     ${libg2o_LIBRARIES}
+                                    ${PCL_LIBRARIES}
                                     cholmod
                                     cxsparse
-                                    ${CHOLMOD_LIBRARIES}
-                                    ${CSPARSE_LIBRARY}
 )
 
 set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")

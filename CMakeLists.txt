@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 project(opencv_candidate)
 
 find_package(catkin REQUIRED)
+find_package(libg2o)
+find_package(OpenCV)
 find_library(DEPTH_SENSE_LIBRARIES DepthSense /opt/DepthSenseSDK/lib)
 
 if (${DEPTH_SENSE_LIBRARIES} STREQUAL DEPTH_SENSE_LIBRARIES-NOTFOUND)
@@ -11,7 +13,8 @@ else()
 endif()
 
 if (${catkin_VERSION} VERSION_GREATER "0.5.28")
-catkin_package(DEPENDS OpenCV libg2o
+catkin_package(CFG_EXTRAS depends.cmake
+               DEPENDS OpenCV libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
@@ -20,12 +23,14 @@ catkin_package(DEPENDS OpenCV libg2o
 else()
 catkin_stack()
 catkin_project(opencv_candidate
+               CFG_EXTRAS depends.cmake
                DEPENDS OpenCV libg2o
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
                          opencv_rgbd
 )
+list(APPEND catkin_LIBRARIES ${libg2o_LIBRARIES})
 endif()
 
 add_definitions(-Wno-strict-aliasing -Wall -Werror)
