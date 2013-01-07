@@ -174,7 +174,7 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
     RgbdICPOdometry odom;
     vector<float> minGradientMagnitudes(1,10);
     vector<int> iterCounts(1,10);
-    odom.set("pointsPart", 1.);
+    odom.set("maxPointsPart", 1.);
     odom.set("minGradientMagnitudes", Mat(minGradientMagnitudes).clone());
     odom.set("iterCounts", Mat(iterCounts).clone());
     odom.set("cameraMatrix", cameraMatrix);

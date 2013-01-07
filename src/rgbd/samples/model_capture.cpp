@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "reconst3d/reconst3d.hpp"
+#include "reconst3d.hpp"
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
