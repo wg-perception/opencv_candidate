@@ -38,13 +38,15 @@ void loadTODLikeBase(const string& dirname, vector<Mat>& bgrImages, vector<Mat>&
     readDirectory(dirname, allFilenames, false);
 
     vector<string> imageIndices;
+    imageIndices.reserve(allFilenames.size());
     for(size_t i = 0; i < allFilenames.size(); i++)
     {
         const string& imageFilename = allFilenames[i];
-        if(imageFilename.size() != 15)
-            continue;
+        // image_* and .png is at least 11 character
+        if (imageFilename.size() < 11)
+          continue;
 
-        const string imageIndex = imageFilename.substr(6, 5);
+        const string imageIndex = imageFilename.substr(6, imageFilename.length() - 6 - 4);
 
         if(imageFilename.substr(0, 6) == "image_" &&
            imageIndex.find_first_not_of("0123456789") == std::string::npos &&
