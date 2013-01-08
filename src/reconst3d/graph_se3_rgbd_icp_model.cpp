@@ -3,7 +3,6 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include "reconst3d.hpp"
 #include "ocv_pcl_convert.hpp"
 #include "graph_optimizations.hpp"
 

@@ -6,7 +6,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 
 using namespace std;
 using namespace cv;

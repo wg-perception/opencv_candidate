@@ -1,6 +1,5 @@
 #include <g2o/types/icp/types_icp.h>
 
-#include "reconst3d.hpp"
 #include "ocv_pcl_convert.hpp"
 #include "graph_optimizations.hpp"
 

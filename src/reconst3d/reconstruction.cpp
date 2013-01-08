@@ -8,7 +8,6 @@
 #include <opencv2/rgbd/rgbd.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include "reconst3d.hpp"
 #include "graph_optimizations.hpp"
 
 using namespace cv;

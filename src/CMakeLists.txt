@@ -1,4 +1,5 @@
 add_subdirectory(opencv_candidate)
+add_subdirectory(reconst3d)
 add_subdirectory(rgbd)
 
 find_library(DEPTH_SENSE_LIBRARIES DepthSense /opt/DepthSenseSDK/lib)

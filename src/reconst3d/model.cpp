@@ -6,7 +6,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/visualization/pcl_visualizer.h>
 
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 
 using namespace cv;
 using namespace std;

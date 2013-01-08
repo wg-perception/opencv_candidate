@@ -9,7 +9,7 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
 
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 #include "ocv_pcl_convert.hpp"
 
 using namespace std;

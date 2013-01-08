@@ -3,7 +3,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 
 using namespace std;
 using namespace cv;

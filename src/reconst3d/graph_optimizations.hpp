@@ -17,7 +17,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 
 typedef g2o::BlockSolver< g2o::BlockSolverTraits<6, 3> >  G2OBlockSolver;
 typedef g2o::LinearSolver< G2OBlockSolver::PoseMatrixType> G2OLinearSolver;

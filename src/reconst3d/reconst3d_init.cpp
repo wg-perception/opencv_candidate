@@ -1,4 +1,4 @@
-#include "reconst3d.hpp"
+#include <opencv_candidate_reconst3d/reconst3d.hpp>
 #include <opencv2/core/core.hpp>
 
 // TODO: remove this fix when it'll became available in OpenCV

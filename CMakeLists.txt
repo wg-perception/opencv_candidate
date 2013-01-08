@@ -19,6 +19,7 @@ catkin_package(CFG_EXTRAS depends.cmake
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
                          opencv_rgbd
+                         opencv_candidate_reconst3d
 )
 else()
 catkin_stack()

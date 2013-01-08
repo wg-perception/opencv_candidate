@@ -1,6 +1,7 @@
 #ifndef RECONST3D_OCV_PCL_CONVERT
 #define RECONST3D_OCV_PCL_CONVERT
 
+#include <opencv2/core/core.hpp>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 
