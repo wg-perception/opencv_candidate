@@ -17,6 +17,10 @@ install(TARGETS opencv_candidate
 #  )
 
 # create some Python wrappers
+if (${catkin_VERSION} VERSION_LESS "0.5.28")
+# let's not support Fuerte for now
+return()
+endif()
 set(Python_ADDITIONAL_VERSIONS 2.7)
 find_package(PythonLibs REQUIRED)
 
