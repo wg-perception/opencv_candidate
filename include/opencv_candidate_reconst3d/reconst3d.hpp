@@ -17,7 +17,7 @@ public:
 
     TableMasker();
     bool operator()(const cv::Mat& cloud, const cv::Mat& normals,
-                    cv::Mat& tableWithObjectMask, cv::Mat* objectMask=0) const;
+                    cv::Mat& tableWithObjectMask, cv::Mat* objectMask=0, cv::Vec4f* planeCoeffs=0) const;
 
     cv::AlgorithmInfo*
     info() const;

@@ -22,7 +22,7 @@ TableMasker::TableMasker() :
 {}
 
 bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
-                             Mat& tableWithObjectMask, Mat* objectMask) const
+                             Mat& tableWithObjectMask, Mat* objectMask, Vec4f* tableCoeffs) const
 {
     const float minTableArea = minTablePart * cloud.total();
 
@@ -132,6 +132,8 @@ bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
 
     if(objectMask)
         (*objectMask) = tableWithObjectMask & ~(planesMask == tableIndex);
+    if(tableCoeffs)
+        (*tableCoeffs) = planesCoeffs[tableIndex];
 
     return true;
 }
