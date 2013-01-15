@@ -4,7 +4,6 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-
 using namespace std;
 using namespace cv;
 
@@ -39,16 +38,28 @@ static void releaseUnusedFrames(const Ptr<TrajectoryFrames>& keyframesData, vect
 
 int main(int argc, char** argv)
 {
-    if(argc != 2  && argc != 3)
+    if(argc != 3  && argc != 4)
     {
-        cout << "Format: " << argv[0] << " train_dirname [model_filename]" << endl;
+        cout << "Format: " << argv[0] << " train_dirname construct_if_loop_closure_only [model_filename]" << endl;
         cout << "   train_dirname - a path to the directory with TOD-like training base." << endl;
+        cout << "   construct_if_loop_closure_only - 0 or 1. If 1 the model reconstruction will be run if the loop closure was detected. If 0,"
+                " it will be run in any case (and result can be not very accurate in this case)." << endl;
         cout << "   model_filename - an optional parameter, it's a filename that will be used to save trained model." << endl;
         return -1;
     }
 
     // Load the data
     const string dirname = argv[1];
+    bool constructIfLoopClosureOnly = true;
+
+    if(string(argv[2]) == "0")
+        constructIfLoopClosureOnly = false;
+    else if(string(argv[2]) != "1")
+    {
+        cout << "Incorrect second parameter passed to the application." << endl;
+        return -1;
+    }
+
     vector<Mat> bgrImages, depthes;
     loadTODLikeBase(dirname, bgrImages, depthes);
     if(bgrImages.empty())
@@ -67,7 +78,7 @@ int main(int argc, char** argv)
         onlineCaptureServer.push(bgrImages[i], depthes[i], i);
 
     Ptr<TrajectoryFrames> trajectoryFrames = onlineCaptureServer.finalize();
-    if(!onlineCaptureServer.get<bool>("isLoopClosed"))
+    if(constructIfLoopClosureOnly && !onlineCaptureServer.get<bool>("isLoopClosed"))
         return -1;
 
 #if 1
@@ -80,8 +91,8 @@ int main(int argc, char** argv)
     Ptr<ObjectModel> model;
     reconstructor.reconstruct(trajectoryFrames, cameraMatrix, model);
 
-    if(argc == 3)
-        model->write_ply(argv[2]);
+    if(argc == 4)
+        model->write_ply(argv[3]);
 
     model->show();
 

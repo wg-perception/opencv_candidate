@@ -237,6 +237,11 @@ ModelReconstructor::ModelReconstructor()
 void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFrames, const Mat& cameraMatrix,
                                      Ptr<ObjectModel>& model) const
 {
+    CV_Assert(trajectoryFrames);
+    CV_Assert(!trajectoryFrames->frames.empty());
+    CV_Assert(trajectoryFrames->poses.size() == trajectoryFrames->frames.size());
+    CV_Assert(!trajectoryFrames->keyframePosesLinks.empty());
+
     const float voxelSize = 0.005f;
 
     if(isShowStepResults)

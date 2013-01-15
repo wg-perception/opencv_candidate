@@ -367,21 +367,6 @@ Ptr<TrajectoryFrames> OnlineCaptureServer::finalize()
             trajectoryFrames->poses.resize(framesCount);
         }
 
-        // Fill camera poses links
-        trajectoryFrames->keyframePosesLinks.clear();
-        CV_Assert((trajectoryFrames->frameStates[0] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME);
-        int keyframeIndex = 0;
-        for(size_t i = 1; i < trajectoryFrames->frames.size(); i++)
-        {
-            if((trajectoryFrames->frameStates[i] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME)
-            {
-                trajectoryFrames->keyframePosesLinks.push_back(PosesLink(keyframeIndex, i));
-                keyframeIndex = i;
-            }
-        }
-        CV_Assert((trajectoryFrames->frameStates[trajectoryFrames->frameStates.size()-1] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME);
-        trajectoryFrames->keyframePosesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst));
-
         cout << "Last frame ID " << closureFrameID << endl;
         cout << "All frames count = " << trajectoryFrames->frames.size() << endl;
         int keyframesCount = 0;
@@ -406,6 +391,23 @@ Ptr<TrajectoryFrames> OnlineCaptureServer::finalize()
         cout << "The algorithm can not make loop closure on given data. " << endl;
         cout << checkDataMessage << endl;
     }
+
+    // Fill camera poses links
+    trajectoryFrames->keyframePosesLinks.clear();
+    CV_Assert((trajectoryFrames->frameStates[0] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME);
+    int keyframeIndex = 0;
+    for(size_t i = 1; i < trajectoryFrames->frames.size(); i++)
+    {
+        if((trajectoryFrames->frameStates[i] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME)
+        {
+            trajectoryFrames->keyframePosesLinks.push_back(PosesLink(keyframeIndex, i));
+            keyframeIndex = i;
+        }
+    }
+    CV_Assert((trajectoryFrames->frameStates[trajectoryFrames->frameStates.size()-1] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME);
+
+    if(!closureFrame.empty())
+        trajectoryFrames->keyframePosesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst));
 
     isFinalized = true;
 
