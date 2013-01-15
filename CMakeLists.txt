@@ -34,7 +34,7 @@ catkin_project(opencv_candidate
 list(APPEND catkin_LIBRARIES ${libg2o_LIBRARIES})
 endif()
 
-add_definitions(-Wno-strict-aliasing -Wall -Werror)
+add_definitions(-Wall)
 
 find_package(OpenCV REQUIRED core imgproc highgui calib3d)
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
