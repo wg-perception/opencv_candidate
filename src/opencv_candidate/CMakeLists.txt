@@ -1,5 +1,6 @@
 add_library(opencv_candidate datamatrix.cpp
                              lsh.cpp
+                             feature2d.cpp
 )
 
 target_link_libraries(opencv_candidate
