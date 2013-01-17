@@ -1,6 +1,6 @@
 find_package(libg2o QUIET)
 
-if (NOT libg2o_FOUND)
+if (NOT ${libg2o_FOUND})
 return()
 endif()
 
