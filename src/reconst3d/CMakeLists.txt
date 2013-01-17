@@ -1,3 +1,9 @@
+find_package(libg2o QUIET)
+
+if (NOT libg2o_FOUND)
+return()
+endif()
+
 find_package(OpenCV REQUIRED)
 
 # Model capture stuff
@@ -25,3 +31,11 @@ target_link_libraries(opencv_candidate_reconst3d ${catkin_LIBRARIES}
                                                  cxsparse
 )
 set_target_properties(opencv_candidate_reconst3d PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
+
+# add model capture sample
+add_executable(model_capture samples/model_capture.cpp)
+target_link_libraries(model_capture ${OpenCV_LIBRARIES}
+                                    opencv_rgbd
+                                    opencv_candidate_reconst3d
+)
+set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")

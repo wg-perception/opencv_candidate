@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 project(opencv_candidate)
 
 find_package(catkin REQUIRED)
-find_package(libg2o)
+find_package(libg2o QUIET)
 find_package(OpenCV)
 find_library(DEPTH_SENSE_LIBRARIES DepthSense /opt/DepthSenseSDK/lib)
 
@@ -13,13 +13,17 @@ else()
 endif()
 
 if (${catkin_VERSION} VERSION_GREATER "0.5.28")
+if (libg2o_FOUND)
+  set(EXTRA_DEPENDS libg2o)
+  set(EXTRA_LIBRARIES opencv_candidate_reconst3d)
+endif()
 catkin_package(CFG_EXTRAS depends.cmake
-               DEPENDS OpenCV libg2o
+               DEPENDS OpenCV ${EXTRA_DEPENDS}
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
                          opencv_rgbd
-                         opencv_candidate_reconst3d
+                         ${opencv_candidate_reconst3d}
 )
 else()
 catkin_stack()

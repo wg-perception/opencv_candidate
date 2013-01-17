@@ -45,24 +45,3 @@ target_link_libraries(rgbd_tests ${OpenCV_LIBRARIES}
 )
 
 add_test(rgbd_tests rgbd_tests)
-
-# Model capture stuff
-find_package(PCL REQUIRED COMPONENTS io filters visualization features segmentation surface)
-include_directories(SYSTEM ${PCL_INCLUDE_DIRS}
-                           /usr/include/suitesparse
-)
-
-# Find Eigen3
-FIND_PACKAGE(Eigen)
-find_package(libg2o)
-
-include_directories(SYSTEM ${EIGEN_INCLUDE_DIRS})
-
-# add model capture sample
-include_directories(${reconst3d_dir}/include)
-add_executable(model_capture samples/model_capture.cpp)
-target_link_libraries(model_capture ${OpenCV_LIBRARIES}
-                                    opencv_rgbd
-                                    opencv_candidate_reconst3d
-)
-set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
