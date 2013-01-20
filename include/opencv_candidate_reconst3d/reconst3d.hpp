@@ -4,6 +4,10 @@
 #include <opencv2/rgbd/rgbd.hpp>
 
 // Read frames from TOD-like base
+void readFrameIndices(const std::string& dirname, std::vector<std::string>& frameIndices);
+
+void loadFrameData(const std::string& dirname, const std::string& frameIndex, cv::Mat& bgrImage, cv::Mat& depth32F);
+
 void loadTODLikeBase(const std::string& dirname, std::vector<cv::Mat>& bgrImages,
                      std::vector<cv::Mat>& depthes32F, std::vector<std::string>* imageFilenames=0);
 
