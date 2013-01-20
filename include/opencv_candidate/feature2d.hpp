@@ -58,6 +58,8 @@ public:
                             bool useProvidedKeypoints=false) const;
 
 protected:
+    void initialize();
+
     void detectAndComputeImpl(const cv::Mat& image, const cv::Mat& mask, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors) const;
 
     void computeImpl(const cv::Mat& image, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors) const;
@@ -66,6 +68,8 @@ protected:
     cv::Ptr<cv::Feature2D> feature2d;
     cv::Ptr<cv::FeatureDetector> featureDetector;
     cv::Ptr<cv::DescriptorExtractor> descriptorExtractor;
+
+    std::vector<cv::Vec2f> affineTransformParams;
 };
 
 }

@@ -77,13 +77,17 @@ namespace feature2d
 {
 
 AffineAdaptedFeature2D::AffineAdaptedFeature2D(const Ptr<Feature2D>& feature2d) : feature2d(feature2d)
-{}
+{
+    initialize();
+}
 
 AffineAdaptedFeature2D::AffineAdaptedFeature2D(const Ptr<FeatureDetector>& featureDetector,
                        const Ptr<DescriptorExtractor>& descriptorExtractor) :
     featureDetector(featureDetector),
     descriptorExtractor(descriptorExtractor)
-{}
+{
+    initialize();
+}
 
 int AffineAdaptedFeature2D::descriptorSize() const
 {
@@ -117,34 +121,24 @@ void AffineAdaptedFeature2D::detectAndComputeImpl(const Mat& image, const Mat& m
     }
 }
 
-void AffineAdaptedFeature2D::operator()(InputArray _image, InputArray _mask,
-                                        vector<KeyPoint>& keypoints,
-                                        OutputArray _descriptors,
-                                        bool useProvidedKeypoints) const
+void AffineAdaptedFeature2D::initialize()
 {
-    Mat image = _image.getMat();
-    Mat mask = _mask.getMat();
+    // Geberate affine transformation parameters
 
-    CV_Assert(useProvidedKeypoints == false);
+    affineTransformParams.clear();
 
     const float a = sqrt(2);
     const float b = 72.f;
 
+    // 0 - tilt
+    // 1 - phi
     float tilt = 1.f;
     const int tiltN = 5;
-
-    keypoints.clear();
-    Mat descriptors;
-
     for(int deg = 0; deg <= tiltN; deg++)
     {
         if(tilt == 1.f)
         {
-            vector<KeyPoint> kpts;
-            Mat descs;
-            detectAndComputeImpl(image, mask, kpts, descs);
-            keypoints.insert(keypoints.end(), kpts.begin(), kpts.end());
-            descriptors.push_back(descs);
+            affineTransformParams.push_back(Vec2f(tilt, FLT_MAX));
         }
         else
         {
@@ -152,37 +146,72 @@ void AffineAdaptedFeature2D::operator()(InputArray _image, InputArray _mask,
             const int phiN = static_cast<int>(std::floor(180.f * tilt / b));
             for(int step = 0; step <= phiN; step++)
             {
-                Mat transformedImage, transformedMask;
-                Mat Ainv = affineSkew(image, mask, tilt, phi, transformedImage, transformedMask);
-
-                vector<KeyPoint> kpts;
-                Mat descs;
-                detectAndComputeImpl(transformedImage, transformedMask, kpts, descs);
-
-                size_t prevSize = keypoints.size();
-                keypoints.resize(prevSize + kpts.size());
-                CV_Assert(Ainv.type() == CV_32FC1);
-                const float* Ainv_ptr = Ainv.ptr<const float>();
-                for(size_t srcIndex = 0, dstIndex = prevSize; srcIndex < kpts.size(); srcIndex++, dstIndex++)
-                {
-                    KeyPoint kp = kpts[srcIndex];
-                    float tx = Ainv_ptr[0] * kp.pt.x + Ainv_ptr[1] * kp.pt.y + Ainv_ptr[2];
-                    float ty = Ainv_ptr[3] * kp.pt.x + Ainv_ptr[4] * kp.pt.y + Ainv_ptr[5];
-                    kp.pt.x = tx;
-                    kp.pt.y = ty;
-                    keypoints[dstIndex] = kp;
-                }
-                descriptors.push_back(descs);
-
+                affineTransformParams.push_back(Vec2f(tilt, phi));
                 phi += b / tilt;
             }
         }
         tilt *= a;
     }
+}
 
-    _descriptors.create(descriptors.size(), descriptors.type());
+void AffineAdaptedFeature2D::operator()(InputArray _image, InputArray _mask,
+                                        vector<KeyPoint>& _keypoints,
+                                        OutputArray _descriptors,
+                                        bool useProvidedKeypoints) const
+{
+    Mat image = _image.getMat();
+    Mat mask = _mask.getMat();
+
+    CV_Assert(useProvidedKeypoints == false);
+    CV_Assert(!affineTransformParams.empty());
+
+    vector<vector<KeyPoint> > keypoints(affineTransformParams.size());
+    vector<Mat> descriptors(affineTransformParams.size());
+
+#pragma omp parallel for
+    for(size_t paramsIndex = 0; paramsIndex < affineTransformParams.size(); paramsIndex++)
+    {
+        const Vec2f& params = affineTransformParams[paramsIndex];
+        const float tilt = params[0];
+        const float phi = params[1];
+
+        if(tilt == 1.f) // tilt
+        {
+            detectAndComputeImpl(image, mask, keypoints[paramsIndex], descriptors[paramsIndex]);
+        }
+        else
+        {
+            Mat transformedImage, transformedMask;
+            Mat Ainv = affineSkew(image, mask, tilt, phi, transformedImage, transformedMask);
+
+            detectAndComputeImpl(transformedImage, transformedMask, keypoints[paramsIndex], descriptors[paramsIndex]);
+
+            // correct keypoints coordinates
+            CV_Assert(Ainv.type() == CV_32FC1);
+            const float* Ainv_ptr = Ainv.ptr<const float>();
+            for(size_t kpIndex = 0; kpIndex < keypoints[paramsIndex].size(); kpIndex++)
+            {
+                KeyPoint& kp = keypoints[paramsIndex][kpIndex];
+                float tx = Ainv_ptr[0] * kp.pt.x + Ainv_ptr[1] * kp.pt.y + Ainv_ptr[2];
+                float ty = Ainv_ptr[3] * kp.pt.x + Ainv_ptr[4] * kp.pt.y + Ainv_ptr[5];
+                kp.pt.x = tx;
+                kp.pt.y = ty;
+            }
+        }
+    }
+
+    // copy keypoints and descriptors to the output
+    _keypoints.clear();
+    Mat allDescriptors;
+    for(size_t paramsIndex = 0; paramsIndex < affineTransformParams.size(); paramsIndex++)
+    {
+        _keypoints.insert(_keypoints.end(), keypoints[paramsIndex].begin(), keypoints[paramsIndex].end());
+        allDescriptors.push_back(descriptors[paramsIndex]);
+    }
+
+    _descriptors.create(allDescriptors.size(), allDescriptors.type());
     Mat _descriptorsMat = _descriptors.getMat();
-    descriptors.copyTo(_descriptorsMat);
+    allDescriptors.copyTo(_descriptorsMat);
 }
 
 void AffineAdaptedFeature2D::computeImpl(const Mat& /*image*/, vector<KeyPoint>& /*keypoints*/, Mat& /*descriptors*/) const
