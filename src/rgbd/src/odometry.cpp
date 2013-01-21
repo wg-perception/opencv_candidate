@@ -1155,7 +1155,7 @@ void RgbdOdometry::checkParams() const
 {
     CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
     CV_Assert(cameraMatrix.size() == Size(3,3) && (cameraMatrix.type() == CV_32FC1 || cameraMatrix.type() == CV_64FC1));
-    CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
+    CV_Assert(minGradientMagnitudes.size() == iterCounts.size() || minGradientMagnitudes.size() == iterCounts.t().size());
 }
 
 bool RgbdOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
@@ -1356,7 +1356,7 @@ void RgbdICPOdometry::checkParams() const
 {
     CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
     CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
-    CV_Assert(minGradientMagnitudes.size() == iterCounts.size());
+    CV_Assert(minGradientMagnitudes.size() == iterCounts.size() || minGradientMagnitudes.size() == iterCounts.t().size());
 }
 
 bool RgbdICPOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
