@@ -18,20 +18,32 @@ public:
     static double DEFAULT_Z_FILTER_MIN() {return 0.005;}
     static double DEFAULT_Z_FILTER_MAX() {return 0.5;}
     static double DEFAULT_MIN_TABLE_PART() {return 0.1;}
+    static double DEFAULT_MIN_OVERLAP_RATIO() {return 0.6;}
 
     TableMasker();
     bool operator()(const cv::Mat& cloud, const cv::Mat& normals,
                     cv::Mat& tableWithObjectMask, cv::Mat* objectMask=0, cv::Vec4f* planeCoeffs=0) const;
 
+    bool operator()(const cv::Mat& cloud, const cv::Mat& normals, const cv::Mat& prevTableMask,
+                    cv::Mat& tableMask, cv::Mat& objectMask, cv::Vec4f* planeCoeffs=0) const;
+
     cv::AlgorithmInfo*
     info() const;
 
 protected:
+    int findTablePlane(const cv::Mat& cloud, const cv::Mat& prevMask,
+                       const cv::Mat_<uchar>& planesMask, size_t planesCount,
+                       cv::Mat& tableMask) const;
+    cv::Mat calcObjectMask(const cv::Mat& cloud,
+                           const cv::Mat& tableMask, const cv::Vec4f& tableCoeffitients) const;
+
+
     mutable cv::Ptr<cv::RgbdPlane> planeComputer;
 
     double zFilterMin;
     double zFilterMax;
     double minTablePart;
+    double minOverlapRatio;
 
     cv::Mat cameraMatrix;
 };

@@ -1,5 +1,6 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
@@ -18,72 +19,130 @@ using namespace cv;
 TableMasker::TableMasker() :
     zFilterMin(DEFAULT_Z_FILTER_MIN()),
     zFilterMax(DEFAULT_Z_FILTER_MAX()),
-    minTablePart(DEFAULT_MIN_TABLE_PART())
+    minTablePart(DEFAULT_MIN_TABLE_PART()),
+    minOverlapRatio(DEFAULT_MIN_OVERLAP_RATIO())
 {}
 
-bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
-                             Mat& tableWithObjectMask, Mat* objectMask, Vec4f* tableCoeffs) const
+static
+float calcAverageDepth(const Mat& cloud, const Mat& mask)
+{
+    float avgDepth = 0.f;
+    int pointsNumber = 0;
+    for(int y = 0; y < mask.rows; y++)
+    {
+        const uchar* maskRow = mask.ptr<uchar>(y);
+        const Point3f* cloudRow = cloud.ptr<Point3f>(y);
+        for(int x = 0; x < mask.cols; x++)
+        {
+            if(maskRow[x])
+            {
+                avgDepth += cloudRow[x].z;
+                pointsNumber++;
+            }
+        }
+    }
+    CV_Assert(pointsNumber > 0);
+    avgDepth /= pointsNumber;
+
+    return avgDepth;
+}
+
+static void
+splitPlaneMask(const Mat& planeMask, vector<Mat>& masks, float minMaskArea)
+{
+    masks.clear();
+
+    vector<vector<Point> > contours;
+    Mat planeMaskClone = planeMask.clone();
+    findContours(planeMaskClone, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+    if(contours.empty())
+        return;
+
+    for(size_t i = 0; i < contours.size(); i++)
+    {
+        Mat mask(planeMask.size(), CV_8UC1, Scalar(0));
+        drawContours(mask, contours, i, Scalar(255), CV_FILLED, 8);
+
+        if(countNonZero(mask) < minMaskArea)
+            continue;
+
+        masks.push_back(mask & planeMask);
+    }
+}
+
+int TableMasker::findTablePlane(const Mat& cloud, const Mat& prevMask,
+                                const Mat_<uchar>& planesMask, size_t planesCount,
+                                Mat& tableMask) const
 {
     const float minTableArea = minTablePart * cloud.total();
 
-    CV_Assert(!cloud.empty() && cloud.type() == CV_32FC3);
-    CV_Assert(!normals.empty() && normals.type() == CV_32FC3);
-    CV_Assert(cloud.size() == normals.size());
+    int planeIndex = -1;
+    float tableAvgDepth = FLT_MAX;
+    float maxOverlapRatio = 0.f;
 
-    CV_Assert(!cameraMatrix.empty());
-    CV_Assert(!planeComputer.empty());
-
-    // Find all planes in the frame.
-    Mat_<uchar> planesMask;
-    vector<Vec4f> planesCoeffs;
-    (*planeComputer)(cloud, normals, planesMask, planesCoeffs);
-
-    // Find table plane:
-    // filter planes with small count of points,
-    // the table plane is a plane with the smallest average distance among the remaining planes.
-    int tableIndex = -1;
-    float tableAvgDist = FLT_MAX;
-    for(size_t i = 0; i < planesCoeffs.size(); i++)
+    tableMask.release();
+    for(size_t i = 0; i < planesCount; i++)
     {
         Mat curMask = planesMask == i;
+
         int pointsNumber = countNonZero(curMask);
         if(pointsNumber < minTableArea)
             continue;
 
-        float curDist = 0.f;
-        for(int y = 0; y < curMask.rows; y++)
-        {
-            const uchar* curMaskRow = curMask.ptr<uchar>(y);
-            const Point3f* cloudRow = cloud.ptr<Point3f>(y);
-            for(int x = 0; x < curMask.cols; x++)
-            {
-                if(curMaskRow[x])
-                    curDist += cloudRow[x].z;
-            }
-        }
-        curDist /= pointsNumber;
+        vector<Mat> splitedMasks;
+        splitPlaneMask(curMask, splitedMasks, minTableArea);
 
-        if(tableAvgDist > curDist)
+        for(size_t splitIndex = 0; splitIndex < splitedMasks.size(); splitIndex++)
         {
-            tableIndex = i;
-            tableAvgDist = curDist;
+            curMask = splitedMasks[splitIndex];
+
+            float curOverlapRatio = 0.f;
+            if(!prevMask.empty())
+            {
+                int intersectArea = countNonZero(prevMask & curMask);
+                int unionArea = countNonZero(prevMask | curMask);
+                if(unionArea > 0)
+                    curOverlapRatio = static_cast<float>(intersectArea) / unionArea;
+
+                if(curOverlapRatio < minOverlapRatio || curOverlapRatio < maxOverlapRatio)
+                    continue;
+
+                if(curOverlapRatio > maxOverlapRatio)
+                {
+                    planeIndex = i;
+                    tableAvgDepth = calcAverageDepth(cloud, curMask);
+                    maxOverlapRatio = curOverlapRatio;
+                    tableMask = curMask;
+                }
+            }
+
+            float curAvgDepth = calcAverageDepth(cloud, curMask);
+
+            if(tableAvgDepth > curAvgDepth)
+            {
+                planeIndex = i;
+                tableAvgDepth = curAvgDepth;
+                maxOverlapRatio = curOverlapRatio;
+                tableMask = curMask;
+            }
         }
     }
 
-    if(tableIndex < 0)
-        return false;
+    return planeIndex;
+}
 
+Mat TableMasker::calcObjectMask(const Mat& cloud,
+                                const Mat& tableMask, const Vec4f& tableCoeffitients) const
+{
     // Find a mask of the object. For this find convex hull for the table and
     // get the points that are in the prism corresponding to the hull lying above the table.
 
     // Convert the data to pcl types
     pcl::PointCloud<pcl::PointXYZ> pclTableCloud;
-    Mat tableMask = planesMask == tableIndex;
     cvtCloud_cv2pcl(cloud, tableMask, pclTableCloud);
 
     pcl::ModelCoefficients pclTableCoeffiteints;
     pclTableCoeffiteints.values.resize(4);
-    Vec4f tableCoeffitients = planesCoeffs[tableIndex];
     pclTableCoeffiteints.values[0] = tableCoeffitients[0];
     pclTableCoeffiteints.values[1] = tableCoeffitients[1];
     pclTableCoeffiteints.values[2] = tableCoeffitients[2];
@@ -116,24 +175,72 @@ bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
     // Draw the object points to the mask
     vector<Point3f> objectCloud;
     cvtCloud_pcl2cv(pclPrismPoints, objectCloud);
-    tableWithObjectMask = tableMask;
+
+    Mat_<uchar> tableWithObjectMask = tableMask.clone();
     if(!objectCloud.empty())
     {
         vector<Point2f> objectPoints2d;
         projectPoints(objectCloud, Mat::zeros(3,1,CV_32FC1), Mat::zeros(3,1,CV_32FC1), cameraMatrix, Mat(), objectPoints2d);
-        Mat_<uchar> objectMask = tableWithObjectMask;
         Rect r(0, 0, cloud.cols, cloud.rows);
         for(size_t i = 0; i < objectPoints2d.size(); i++)
         {
             if(r.contains(objectPoints2d[i]))
-                objectMask(objectPoints2d[i]) = 255;
+                tableWithObjectMask(objectPoints2d[i]) = 255;
         }
     }
 
-    if(objectMask)
-        (*objectMask) = tableWithObjectMask & ~(planesMask == tableIndex);
+    Mat objectMask = tableWithObjectMask & ~tableMask;
+    return objectMask;
+}
+
+
+bool TableMasker::operator()(const Mat& cloud, const Mat& normals,
+                             Mat& tableWithObjectMask, Mat* _objectMask, Vec4f* tableCoeffs) const
+{
+    Mat tableMask, objectMask;
+    bool isOk = (*this)(cloud, normals, Mat(), tableMask, objectMask, tableCoeffs);
+
+    if(isOk)
+    {
+        tableWithObjectMask = tableMask | objectMask;
+        if(_objectMask)
+            *_objectMask = objectMask.clone();
+    }
+
+    return isOk;
+}
+
+
+bool TableMasker::operator()(const Mat& cloud, const Mat& normals, const Mat& prevTableMask,
+                             Mat& tableMask, Mat& objectMask, Vec4f* tableCoeffs) const
+{
+    CV_Assert(!cloud.empty() && cloud.type() == CV_32FC3);
+    CV_Assert(!normals.empty() && normals.type() == CV_32FC3);
+    CV_Assert(cloud.size() == normals.size());
+
+    CV_Assert(!cameraMatrix.empty());
+    CV_Assert(!planeComputer.empty());
+
+    if(!prevTableMask.empty())
+    {
+        CV_Assert(prevTableMask.size() == cloud.size());
+        CV_Assert(prevTableMask.type() == CV_8UC1);
+        CV_Assert(static_cast<double>(countNonZero(prevTableMask)) >= minTablePart * prevTableMask.total());
+    }
+
+    // Find all planes in the frame.
+    Mat_<uchar> planesMask;
+    vector<Vec4f> planesCoeffs;
+    (*planeComputer)(cloud, normals, planesMask, planesCoeffs);
+
+    int planeIndex = findTablePlane(cloud, prevTableMask, planesMask, planesCoeffs.size(), tableMask);
+    if(planeIndex < 0)
+        return false;
+
+    objectMask = calcObjectMask(cloud, tableMask, planesCoeffs[planeIndex]);
+
     if(tableCoeffs)
-        (*tableCoeffs) = planesCoeffs[tableIndex];
+        (*tableCoeffs) = planesCoeffs[planeIndex];
 
     return true;
 }
