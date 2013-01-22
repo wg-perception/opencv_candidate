@@ -131,7 +131,13 @@ public:
   {
     return K_ == 0;
   }
-  /** The index of the plane */
+
+  inline int
+  K() const
+  {
+    return K_;
+  }
+/** The index of the plane */
   int index_;
 protected:
   /** The 4th coefficient in the plane equation ax+by+cz+d = 0 */
@@ -585,8 +591,31 @@ namespace cv
       while (!neighboring_tiles.empty())
         inlier_finder.Find(plane_grid, plane, plane_queue, neighboring_tiles, mask_out_uc, plane_mask);
 
+      // Don't record the plane if it's empty
       if (plane->empty())
         continue;
+      // Don't record the plane if it's smaller than asked
+      if (plane->K() < min_size_) {
+        // Reset the plane index in the mask
+        for (int y = 0; y < plane_mask.rows; ++y)
+          for (int x = 0; x < plane_mask.cols; ++x) {
+            if (!plane_mask(y, x))
+              continue;
+            // Go over the tile
+            for (int yy = y * block_size_;
+                yy < std::min((y + 1) * block_size_, mask_out_uc.rows); ++yy) {
+              uchar* data = mask_out_uc.ptr(yy, x * block_size_);
+              uchar* data_end = data
+                  + std::min(block_size_,
+                      mask_out_uc.cols - x * block_size_);
+              for (; data != data_end; ++data) {
+                if (*data == index_plane)
+                  *data = 255;
+              }
+            }
+          }
+        continue;
+      }
 
       ++index_plane;
       if (index_plane >= 255)

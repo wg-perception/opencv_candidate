@@ -45,15 +45,16 @@ namespace cv
       obj.info()->addParam(obj, "method", obj.method_))
 
   CV_INIT_ALGORITHM(RgbdNormals, "RGBD.RgbdNormals",
-      obj.info()->addParam(obj, "rows", obj.rows_); 
-      obj.info()->addParam(obj, "cols", obj.cols_); 
-      obj.info()->addParam(obj, "window_size", obj.window_size_); 
-      obj.info()->addParam(obj, "depth", obj.depth_); 
-      obj.info()->addParam(obj, "K", obj.K_); 
+      obj.info()->addParam(obj, "rows", obj.rows_);
+      obj.info()->addParam(obj, "cols", obj.cols_);
+      obj.info()->addParam(obj, "window_size", obj.window_size_);
+      obj.info()->addParam(obj, "depth", obj.depth_);
+      obj.info()->addParam(obj, "K", obj.K_);
       obj.info()->addParam(obj, "method", obj.method_))
 
   CV_INIT_ALGORITHM(RgbdPlane, "RGBD.RgbdPlane",
-      obj.info()->addParam(obj, "block_size", obj.block_size_, 400);
+      obj.info()->addParam(obj, "block_size", obj.block_size_);
+      obj.info()->addParam(obj, "min_size", obj.min_size_);
       obj.info()->addParam(obj, "method", obj.method_);
       obj.info()->addParam(obj, "threshold", obj.threshold_);
       obj.info()->addParam(obj, "sensor_error_a", obj.sensor_error_a_);

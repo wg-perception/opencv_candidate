@@ -282,6 +282,7 @@ namespace cv
         :
           method_(method),
           block_size_(40),
+          min_size_(block_size_*block_size_),
           threshold_(0.01),
           sensor_error_a_(0),
           sensor_error_b_(0),
@@ -316,6 +317,8 @@ namespace cv
     int method_;
     /** The size of the blocks to look at for a stable MSE */
     int block_size_;
+    /** The minimum size of a cluster to be considered a plane */
+    int min_size_;
     /** How far a point can be from a plane to belong to it (in meters) */
     double threshold_;
     /** coefficient of the sensor error with respect to the. All 0 by default but you want a=0.0075 for a Kinect */
