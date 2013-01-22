@@ -585,7 +585,7 @@ namespace cv
       while (!neighboring_tiles.empty())
         inlier_finder.Find(plane_grid, plane, plane_queue, neighboring_tiles, mask_out_uc, plane_mask);
 
-      if (plane.empty())
+      if (plane->empty())
         continue;
 
       ++index_plane;
