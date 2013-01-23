@@ -24,6 +24,8 @@ preparePosesLinksWithoutRt(const vector<PosesLink>& srcLinks, vector<PosesLink>&
 static Mat
 refineObjectMask(const Mat& initObjectMask)
 {
+   // TODO Sometimes this refiner removes parts of object. Implement better filter of outliers.
+#if 0
     vector<vector<Point> > contours;
     Mat initObjectMaskClone = initObjectMask.clone();
     findContours(initObjectMaskClone, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
@@ -49,6 +51,9 @@ refineObjectMask(const Mat& initObjectMask)
     drawContours(objectMask, contours, objectMaskIndex, Scalar(255), CV_FILLED, 8);
 
     return objectMask & initObjectMask;
+#else
+    return initObjectMask;
+#endif
 }
 
 #if 0
