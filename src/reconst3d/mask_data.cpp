@@ -62,12 +62,12 @@ splitPlaneMask(const Mat& planeMask, vector<Mat>& masks, float minMaskArea)
 
     for(size_t i = 0; i < contours.size(); i++)
     {
-        Mat mask(planeMask.size(), CV_8UC1, Scalar(0));
-        drawContours(mask, contours, i, Scalar(255), CV_FILLED, 8);
-
-        if(countNonZero(mask) < minMaskArea)
+        int area = contourArea(contours[i]);
+        if(area < minMaskArea)
             continue;
 
+        Mat mask = Mat::zeros(planeMask.size(), CV_8UC1);
+        drawContours(mask, contours, i, Scalar(255), CV_FILLED, 8);
         masks.push_back(mask & planeMask);
     }
 }
@@ -103,10 +103,6 @@ int TableMasker::findTablePlane(const Mat& cloud, const Mat& prevMask,
     for(size_t i = 0; i < planesCount; i++)
     {
         Mat curMask = planesMask == i;
-
-        int pointsNumber = countNonZero(curMask);
-        if(pointsNumber < minTableArea)
-            continue;
 
         vector<Mat> splitedMasks;
         splitPlaneMask(curMask, splitedMasks, minTableArea);
@@ -243,16 +239,23 @@ bool TableMasker::operator()(const Mat& cloud, const Mat& normals, const Mat& pr
     CV_Assert(cloud.size() == normals.size());
 
     CV_Assert(!cameraMatrix.empty());
-    CV_Assert(!planeComputer.empty());
+
+    const int minTableArea = static_cast<int>(minTablePart * cloud.total());
 
     if(!prevTableMask.empty())
     {
         CV_Assert(prevTableMask.size() == cloud.size());
         CV_Assert(prevTableMask.type() == CV_8UC1);
-        CV_Assert(static_cast<double>(countNonZero(prevTableMask)) >= minTablePart * prevTableMask.total());
+        CV_Assert(countNonZero(prevTableMask) >= minTableArea);
     }
 
-    // Find all planes in the frame.
+    if(!planeComputer)
+    {
+        planeComputer = new RgbdPlane();
+        planeComputer->set("sensor_error_a", 0.0075f);
+    }
+    planeComputer->set("min_size", minTableArea);
+
     Mat_<uchar> planesMask;
     vector<Vec4f> planesCoeffs;
     (*planeComputer)(cloud, normals, planesMask, planesCoeffs);

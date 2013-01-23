@@ -31,7 +31,6 @@
     }
 
 CV_INIT_ALGORITHM_FIX(TableMasker, "ModelCapture.TableMasker",
-    obj.info()->addParam(obj, "planeComputer", obj.planeComputer);
     obj.info()->addParam(obj, "zFilterMin", obj.zFilterMin);
     obj.info()->addParam(obj, "zFilterMax", obj.zFilterMax);
     obj.info()->addParam(obj, "minTablePart", obj.minTablePart);

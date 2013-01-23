@@ -319,12 +319,7 @@ void OnlineCaptureServer::initialize(const Size& frameResolution, int storeFrame
 
     normalsComputer = new RgbdNormals(frameResolution.height, frameResolution.width, CV_32FC1, cameraMatrix); // inner
     if(tableMasker.empty())
-    {
         tableMasker = new TableMasker();
-        Ptr<RgbdPlane> planeComputer = new RgbdPlane();
-        planeComputer->set("sensor_error_a", 0.0075f);
-        tableMasker->set("planeComputer", planeComputer);
-    }
     tableMasker->set("cameraMatrix", cameraMatrix);
 
     if(odometry.empty())
