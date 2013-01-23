@@ -20,7 +20,9 @@ TableMasker::TableMasker() :
     zFilterMin(DEFAULT_Z_FILTER_MIN()),
     zFilterMax(DEFAULT_Z_FILTER_MAX()),
     minTablePart(DEFAULT_MIN_TABLE_PART()),
-    minOverlapRatio(DEFAULT_MIN_OVERLAP_RATIO())
+    minOverlapRatio(DEFAULT_MIN_OVERLAP_RATIO()),
+    erodeIters(DEFAULT_ERODE_ITERS),
+    minObjectPartArea(DEFAULT_MIN_OBJECT_PART_AREA)
 {}
 
 static
@@ -67,6 +69,23 @@ splitPlaneMask(const Mat& planeMask, vector<Mat>& masks, float minMaskArea)
             continue;
 
         masks.push_back(mask & planeMask);
+    }
+}
+
+static void
+refineObjectMask(Mat& objectMask, int minObjectPartArea)
+{
+    vector<vector<Point> > contours;
+    Mat objectMaskClone = objectMask.clone();
+    findContours(objectMaskClone, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+    if(contours.empty())
+        return;
+
+    for(size_t i = 0; i < contours.size(); i++)
+    {
+        int area = contourArea(contours[i]);
+        if(area < minObjectPartArea)
+            drawContours(objectMask, contours, i, Scalar(0), CV_FILLED, 8);
     }
 }
 
@@ -134,12 +153,15 @@ int TableMasker::findTablePlane(const Mat& cloud, const Mat& prevMask,
 Mat TableMasker::calcObjectMask(const Mat& cloud,
                                 const Mat& tableMask, const Vec4f& tableCoeffitients) const
 {
+    Mat erodedTableMask;
+    erode(tableMask, erodedTableMask, Mat(), Point(-1,-1), erodeIters);
+
     // Find a mask of the object. For this find convex hull for the table and
     // get the points that are in the prism corresponding to the hull lying above the table.
 
     // Convert the data to pcl types
     pcl::PointCloud<pcl::PointXYZ> pclTableCloud;
-    cvtCloud_cv2pcl(cloud, tableMask, pclTableCloud);
+    cvtCloud_cv2pcl(cloud, erodedTableMask, pclTableCloud);
 
     pcl::ModelCoefficients pclTableCoeffiteints;
     pclTableCoeffiteints.values.resize(4);
@@ -176,7 +198,7 @@ Mat TableMasker::calcObjectMask(const Mat& cloud,
     vector<Point3f> objectCloud;
     cvtCloud_pcl2cv(pclPrismPoints, objectCloud);
 
-    Mat_<uchar> tableWithObjectMask = tableMask.clone();
+    Mat_<uchar> dirtyObjectMask = Mat::zeros(tableMask.size(), CV_8UC1);
     if(!objectCloud.empty())
     {
         vector<Point2f> objectPoints2d;
@@ -185,11 +207,13 @@ Mat TableMasker::calcObjectMask(const Mat& cloud,
         for(size_t i = 0; i < objectPoints2d.size(); i++)
         {
             if(r.contains(objectPoints2d[i]))
-                tableWithObjectMask(objectPoints2d[i]) = 255;
+                dirtyObjectMask(objectPoints2d[i]) = 255;
         }
     }
 
-    Mat objectMask = tableWithObjectMask & ~tableMask;
+    Mat objectMask = dirtyObjectMask & ~tableMask;
+    refineObjectMask(objectMask, minObjectPartArea);
+
     return objectMask;
 }
 

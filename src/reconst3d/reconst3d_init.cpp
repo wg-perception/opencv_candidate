@@ -36,6 +36,8 @@ CV_INIT_ALGORITHM_FIX(TableMasker, "ModelCapture.TableMasker",
     obj.info()->addParam(obj, "zFilterMax", obj.zFilterMax);
     obj.info()->addParam(obj, "minTablePart", obj.minTablePart);
     obj.info()->addParam(obj, "minOverlapRatio", obj.minOverlapRatio);
+    obj.info()->addParam(obj, "erodeIters", obj.erodeIters);
+    obj.info()->addParam(obj, "minObjectPartArea", obj.minObjectPartArea);
     obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);)
 
 

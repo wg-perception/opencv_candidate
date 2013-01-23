@@ -19,6 +19,8 @@ public:
     static double DEFAULT_Z_FILTER_MAX() {return 0.5;}
     static double DEFAULT_MIN_TABLE_PART() {return 0.1;}
     static double DEFAULT_MIN_OVERLAP_RATIO() {return 0.6;}
+    static const int DEFAULT_ERODE_ITERS = 10;
+    static const int DEFAULT_MIN_OBJECT_PART_AREA = 15;
 
     TableMasker();
     bool operator()(const cv::Mat& cloud, const cv::Mat& normals,
@@ -44,6 +46,8 @@ protected:
     double zFilterMax;
     double minTablePart;
     double minOverlapRatio;
+    int erodeIters;
+    int minObjectPartArea;
 
     cv::Mat cameraMatrix;
 };
