@@ -695,39 +695,44 @@ namespace cv
     CV_Assert(K_.cols == 3 && K.rows == 3);
   }
 
-  /** Destructor
-   */
-  RgbdNormals::~RgbdNormals()
+  void delete_normals_impl(void *rgbd_normals_impl_, int method_, int depth)
   {
     if (rgbd_normals_impl_ == 0)
       return;
     switch (method_)
     {
-      case RGBD_NORMALS_METHOD_LINEMOD:
+      case RgbdNormals::RGBD_NORMALS_METHOD_LINEMOD:
       {
-        if (depth_ == CV_32F)
+        if (depth == CV_32F)
           delete reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_);
         else
           delete reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_);
         break;
       }
-      case RGBD_NORMALS_METHOD_SRI:
+      case RgbdNormals::RGBD_NORMALS_METHOD_SRI:
       {
-        if (depth_ == CV_32F)
+        if (depth == CV_32F)
           delete reinterpret_cast<const SRI<float> *>(rgbd_normals_impl_);
         else
           delete reinterpret_cast<const SRI<double> *>(rgbd_normals_impl_);
         break;
       }
-      case (RGBD_NORMALS_METHOD_FALS):
+      case (RgbdNormals::RGBD_NORMALS_METHOD_FALS):
       {
-        if (depth_ == CV_32F)
+        if (depth == CV_32F)
           delete reinterpret_cast<const FALS<float> *>(rgbd_normals_impl_);
         else
           delete reinterpret_cast<const FALS<double> *>(rgbd_normals_impl_);
         break;
       }
     }
+  }
+
+  /** Destructor
+   */
+  RgbdNormals::~RgbdNormals()
+  {
+    delete_normals_impl(rgbd_normals_impl_, method_, depth_);
   }
 
   void
@@ -780,8 +785,10 @@ namespace cv
     if (rgbd_normals_impl_ == 0)
       initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
     else if (!reinterpret_cast<RgbdNormalsImpl *>(rgbd_normals_impl_)->validate(rows_, cols_, depth_, K_, window_size_,
-                                                                                method_))
+                                                                                method_)) {
+      delete_normals_impl(rgbd_normals_impl_, method_, depth_);
       initialize_normals_impl(rows_, cols_, depth_, K_, window_size_, method_);
+    }
   }
 
   /** Given a set of 3d points in a depth image, compute the normals at each point
