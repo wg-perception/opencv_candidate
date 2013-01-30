@@ -105,34 +105,32 @@ namespace
      * @param r
      * @return
      */
-    cv::Mat
-    compute(const cv::Mat& depth_in) const
+    void
+    compute(const cv::Mat& depth_in, cv::Mat& depth_out) const
     {
       switch (depth_in.depth())
       {
         case CV_16U:
         {
           const cv::Mat_<unsigned short> &depth(depth_in);
-          cv::Mat depth_out = computeImpl<unsigned short, float>(depth, 0.001);
-          cv::Mat depth_out_typed;
-          depth_out.convertTo(depth_out_typed, CV_16U);
-          return depth_out_typed;
+          cv::Mat depth_out_tmp;
+          computeImpl<unsigned short, float>(depth, depth_out_tmp, 0.001);
+          depth_out_tmp.convertTo(depth_out, CV_16U);
           break;
         }
         case CV_32F:
         {
           const cv::Mat_<float> &depth(depth_in);
-          return computeImpl<float, float>(depth, 1);
+          computeImpl<float, float>(depth, depth_out, 1);
           break;
         }
         case CV_64F:
         {
           const cv::Mat_<double> &depth(depth_in);
-          return computeImpl<double, double>(depth, 1);
+          computeImpl<double, double>(depth, depth_out, 1);
           break;
         }
       }
-      return cv::Mat();
     }
 
   private:
@@ -141,8 +139,8 @@ namespace
      * @return
      */
     template<typename DepthDepth, typename ContainerDepth>
-    cv::Mat
-    computeImpl(const cv::Mat_<DepthDepth> &depth_in, ContainerDepth scale) const
+    void
+    computeImpl(const cv::Mat_<DepthDepth> &depth_in, cv::Mat & depth_out, ContainerDepth scale) const
     {
       const ContainerDepth theta_mean = 30. * CV_PI / 180;
       int rows = depth_in.rows;
@@ -194,10 +192,7 @@ namespace
             }
         }
       }
-      cv::Mat_<ContainerDepth> depth_out = Dw_sum / w_sum;
-      std::cout << depth_in(200, 100) << " " << depth_out(200, 100) << " - " << std::endl;
-
-      return depth_out;
+      cv::Mat(Dw_sum / w_sum).copyTo(depth_out);
     }
   };
 }
@@ -294,17 +289,20 @@ namespace cv
    * @param window_size the window size on which to compute the derivatives
    * @return normals a rows x cols x 3 matrix
    */
-  cv::Mat
-  DepthCleaner::operator()(const cv::Mat &depth) const
+  void
+  DepthCleaner::operator()(InputArray depth_in_array, OutputArray depth_out_array) const
   {
-    CV_Assert(depth.dims == 2);
-    CV_Assert(depth.channels() == 1);
+    cv::Mat depth_in = depth_in_array.getMat();
+    CV_Assert(depth_in.dims == 2);
+    CV_Assert(depth_in.channels() == 1);
+
+    depth_out_array.create(depth_in.size(), depth_);
+    cv::Mat depth_out = depth_out_array.getMat();
 
     // Initialize the pimpl
     initialize();
 
     // Clean the depth
-    cv::Mat depth_out;
     switch (method_)
     {
       case (DEPTH_CLEANER_NIL):
@@ -312,19 +310,17 @@ namespace cv
         switch (depth_)
         {
           case CV_16U:
-            depth_out = reinterpret_cast<const NIL<unsigned short> *>(depth_cleaner_impl_)->compute(depth);
+            reinterpret_cast<const NIL<unsigned short> *>(depth_cleaner_impl_)->compute(depth_in, depth_out);
             break;
           case CV_32F:
-            depth_out = reinterpret_cast<const NIL<float> *>(depth_cleaner_impl_)->compute(depth);
+            reinterpret_cast<const NIL<float> *>(depth_cleaner_impl_)->compute(depth_in, depth_out);
             break;
           case CV_64F:
-            depth_out = reinterpret_cast<const NIL<double> *>(depth_cleaner_impl_)->compute(depth);
+            reinterpret_cast<const NIL<double> *>(depth_cleaner_impl_)->compute(depth_in, depth_out);
             break;
         }
         break;
       }
     }
-
-    return depth_out;
   }
 }

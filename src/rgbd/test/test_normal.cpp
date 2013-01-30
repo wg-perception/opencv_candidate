@@ -265,10 +265,10 @@ protected:
     {
       std::vector<cv::Mat> channels;
       cv::split(points3d, channels);
-      in_normals = normals_computer(channels[2]);
+      normals_computer(channels[2], in_normals);
     }
     else
-      in_normals = normals_computer(points3d);
+      normals_computer(points3d, in_normals);
     tm.stop();
 
     cv::Mat_<cv::Vec3f> normals, ground_normals;
@@ -347,7 +347,8 @@ protected:
         // First, get the normals
         int depth = CV_32F;
         cv::RgbdNormals normals_computer(H, W, depth, K, 5, cv::RgbdNormals::RGBD_NORMALS_METHOD_FALS);
-        cv::Mat normals = normals_computer(points3d);
+        cv::Mat normals;
+        normals_computer(points3d, normals);
         tm1.stop();
 
         tm2.start();

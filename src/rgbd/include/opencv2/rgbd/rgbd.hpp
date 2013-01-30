@@ -111,7 +111,7 @@ namespace cv
           rows_(0),
           cols_(0),
           depth_(0),
-          K_(cv::Mat()),
+          K_(Mat()),
           window_size_(0),
           method_(RGBD_NORMALS_METHOD_FALS),
           rgbd_normals_impl_(0)
@@ -126,7 +126,7 @@ namespace cv
      * @param window_size the window size to compute the normals: can only be 1,3,5 or 7
      * @param method one of the methods to use: RGBD_NORMALS_METHOD_SRI, RGBD_NORMALS_METHOD_FALS
      */
-    RgbdNormals(int rows, int cols, int depth, const cv::Mat & K, int window_size = 5, int method =
+    RgbdNormals(int rows, int cols, int depth, InputArray K, int window_size = 5, int method =
         RGBD_NORMALS_METHOD_FALS);
 
     ~RgbdNormals();
@@ -136,10 +136,10 @@ namespace cv
 
     /** Given a set of 3d points in a depth image, compute the normals at each point.
      * @param points a rows x cols x 3 matrix of CV_32F/CV64F or a rows x cols x 1 CV_U16S
-     * @return normals a rows x cols x 3 matrix
+     * @param normals a rows x cols x 3 matrix
      */
-    cv::Mat
-    operator()(const cv::Mat &points) const;
+    void
+    operator()(InputArray points, OutputArray normals) const;
 
     /** Initializes some data that is cached for later computation
      * If that function is not called, it will be called the first time normals are computed
@@ -157,10 +157,10 @@ namespace cv
     }
   protected:
     void
-    initialize_normals_impl(int rows, int cols, int depth, const cv::Mat & K, int window_size, int method) const;
+    initialize_normals_impl(int rows, int cols, int depth, const Mat & K, int window_size, int method) const;
 
     int rows_, cols_, depth_;
-    cv::Mat K_;
+    Mat K_;
     int window_size_;
     int method_;
     mutable void* rgbd_normals_impl_;
@@ -204,10 +204,10 @@ namespace cv
 
     /** Given a set of 3d points in a depth image, compute the normals at each point.
      * @param points a rows x cols x 3 matrix of CV_32F/CV64F or a rows x cols x 1 CV_U16S
-     * @return normals a rows x cols x 3 matrix
+     * @param depth a rows x cols matrix of the cleaned up depth
      */
-    cv::Mat
-    operator()(const cv::Mat &points) const;
+    void
+    operator()(InputArray points, OutputArray depth) const;
 
     /** Initializes some data that is cached for later computation
      * If that function is not called, it will be called the first time normals are computed
@@ -241,7 +241,7 @@ namespace cv
    */
   CV_EXPORTS
   void
-  depthTo3dSparse(const cv::Mat& depth, const cv::Mat& in_K, const cv::InputArray in_points, cv::Mat& points3d);
+  depthTo3dSparse(InputArray depth, InputArray in_K, InputArray in_points, OutputArray points3d);
 
   /** Converts a depth image to an organized set of 3d points.
    * The coordinate system is x pointing left, y down and z away from the camera
@@ -253,7 +253,7 @@ namespace cv
    */
   CV_EXPORTS
   void
-  depthTo3d(const cv::Mat& depth, const cv::Mat& K, cv::Mat& points3d, const cv::Mat& mask = cv::Mat());
+  depthTo3d(InputArray depth, InputArray K, OutputArray points3d, InputArray mask = noArray());
 
   /** If the input image is of type CV_16UC1 (like the Kinect one), the image is converted to floats, divided
    * by 1000 to get a depth in meters, and the values 0 are converted to std::numeric_limits<float>::quiet_NaN()
@@ -265,12 +265,12 @@ namespace cv
    */
   CV_EXPORTS
   void
-  rescaleDepth(const cv::Mat& in, int depth, cv::Mat& out);
+  rescaleDepth(InputArray in, int depth, OutputArray out);
 
   /** Object that can compute planes in an image
    */
   CV_EXPORTS
-  class RgbdPlane: public cv::Algorithm
+  class RgbdPlane: public Algorithm
   {
   public:
     enum RGBD_PLANE_METHOD
@@ -298,8 +298,8 @@ namespace cv
      * @param the coefficients of the corresponding planes (a,b,c,d) such that ax+by+cz+d=0 and norm(a,b,c)=1
      */
     void
-    operator()(const cv::Mat & points3d, const cv::Mat & normals, cv::Mat &mask,
-               std::vector<cv::Vec4f> & plane_coefficients);
+    operator()(InputArray points3d, InputArray normals, OutputArray mask,
+               OutputArray plane_coefficients);
 
     /** Find The planes in a depth image but without doing a normal check, which is faster but less accurate
      * @param points3d the 3d points organized like the depth image: rows x cols with 3 channels
@@ -308,7 +308,7 @@ namespace cv
      * @param the coefficients of the corresponding planes (a,b,c,d) such that ax+by+cz+d=0
      */
     void
-    operator()(const cv::Mat & points3d, cv::Mat &mask, std::vector<cv::Vec4f> & plane_coefficients);
+    operator()(InputArray points3d, OutputArray mask, OutputArray plane_coefficients);
 
     AlgorithmInfo*
     info() const;

@@ -147,7 +147,8 @@ Ptr<OnlineCaptureServer::FramePushOutput> OnlineCaptureServer::push(const Mat& _
     Mat cloud;
     depthTo3d(depth, cameraMatrix, cloud);
 
-    Mat normals = (*normalsComputer)(cloud);
+    Mat normals;
+    (*normalsComputer)(cloud, normals);
 
     Mat tableWithObjectMask;
     bool isTableMaskOk = (*tableMasker)(cloud, normals, tableWithObjectMask, &pushOutput->objectMask);

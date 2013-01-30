@@ -128,10 +128,14 @@ namespace
   void
   signNormal(const cv::Vec<T, 3> & normal_in, cv::Vec<T, 3> & normal_out)
   {
+    cv::Vec<T, 3> res;
     if (normal_in[2] > 0)
-      normal_out = -normal_in / norm_vec(normal_in);
+      res = -normal_in / norm_vec(normal_in);
     else
-      normal_out = normal_in / norm_vec(normal_in);
+      res = normal_in / norm_vec(normal_in);
+    normal_out[0] = res[0];
+    normal_out[1] = res[1];
+    normal_out[2] = res[2];
   }
   /** Modify normals to make sure they point towards the camera
    * @param normals
@@ -269,8 +273,8 @@ namespace
      * @param r
      * @return
      */
-    virtual cv::Mat
-    compute(const cv::Mat&, const cv::Mat &r) const
+    virtual void
+    compute(const cv::Mat&, const cv::Mat &r, cv::Mat & normals) const
     {
       // Compute B
       cv::Mat_<Vec3T> B(rows_, cols_);
@@ -290,11 +294,10 @@ namespace
       cv::boxFilter(B, B, B.depth(), cv::Size(window_size_, window_size_), cv::Point(-1, -1), false);
 
       // compute the Minv*B products
-      cv::Mat_<Vec3T> normals(rows_, cols_);
       row_r = r.ptr < T > (0);
       const Vec3T * B_vec = B[0];
       const Mat33T * M_inv = reinterpret_cast<const Mat33T *>(M_inv_.ptr(0));
-      Vec3T *normal = normals[0];
+      Vec3T *normal = normals.ptr<Vec3T>(0);
       for (; row_r != row_r_end; ++row_r, ++B_vec, ++normal, ++M_inv)
         if (cvIsNaN(*row_r))
         {
@@ -304,8 +307,6 @@ namespace
         }
         else
           signNormal((*M_inv) * (*B_vec), *normal);
-
-      return normals;
     }
 
   private:
@@ -362,33 +363,32 @@ namespace
 
     /** Compute the normals
      * @param r
-     * @return
+     * @param normals the output normals
      */
-    cv::Mat
-    compute(const cv::Mat& depth_in) const
+    void
+    compute(const cv::Mat& depth_in, cv::Mat & normals) const
     {
       switch (depth_in.depth())
       {
         case CV_16U:
         {
           const cv::Mat_<unsigned short> &depth(depth_in);
-          return computeImpl<unsigned short, long>(depth);
+          computeImpl<unsigned short, long>(depth, normals);
           break;
         }
         case CV_32F:
         {
           const cv::Mat_<float> &depth(depth_in);
-          return computeImpl<float, float>(depth);
+          computeImpl<float, float>(depth, normals);
           break;
         }
         case CV_64F:
         {
           const cv::Mat_<double> &depth(depth_in);
-          return computeImpl<double, double>(depth);
+          computeImpl<double, double>(depth, normals);
           break;
         }
       }
-      return cv::Mat();
     }
 
   private:
@@ -398,10 +398,8 @@ namespace
      */
     template<typename DepthDepth, typename ContainerDepth>
     cv::Mat
-    computeImpl(const cv::Mat_<DepthDepth> &depth) const
+    computeImpl(const cv::Mat_<DepthDepth> &depth, cv::Mat & normals) const
     {
-      cv::Mat_<Vec3T> normals(rows_, cols_);
-
       const int r = 5; // used to be 7
       const int sample_step = r;
       const int square_size = ((2 * r / sample_step) + 1);
@@ -437,7 +435,7 @@ namespace
       for (int y = r; y < rows_ - r - 1; ++y)
       {
         const DepthDepth * p_line = reinterpret_cast<const DepthDepth*>(depth.ptr(y, r));
-        Vec3T *normal = normals[0] + (y * cols_ + r);
+        Vec3T *normal = normals.ptr<Vec3T>(y, r);
 
         for (int x = r; x < cols_ - r - 1; ++x)
         {
@@ -594,20 +592,20 @@ namespace
      * @param r
      * @return
      */
-    virtual cv::Mat
-    compute(const cv::Mat& points3d, const cv::Mat &r) const
+    virtual void
+    compute(const cv::Mat& points3d, const cv::Mat &r, cv::Mat & normals) const
     {
       const cv::Mat_<T>& r_T(r);
       const cv::Mat_<Vec3T> &points3d_T(points3d);
-      return compute(points3d_T, r_T);
+      compute(points3d_T, r_T, normals);
     }
 
     /** Compute the normals
      * @param r
      * @return
      */
-    cv::Mat
-    compute(const cv::Mat_<Vec3T> &, const cv::Mat_<T> &r_non_interp) const
+    void
+    compute(const cv::Mat_<Vec3T> &, const cv::Mat_<T> &r_non_interp, cv::Mat & normals_out) const
     {
       // Interpolate the radial image to make derivatives meaningful
       cv::Mat_<T> r;
@@ -649,15 +647,11 @@ namespace
         }
       }
 
-      cv::Mat normals_euclidean(normals.size(), CV_32FC3);
-      cv::remap(normals, normals_euclidean, invxy_, invfxy_, cv::INTER_LINEAR);
-      normal = normals_euclidean.ptr<Vec3T>(0);
+      cv::remap(normals, normals_out, invxy_, invfxy_, cv::INTER_LINEAR);
+      normal = normals_out.ptr<Vec3T>(0);
       Vec3T * normal_end = normal + rows_ * cols_;
       for (; normal != normal_end; ++normal)
-      {
         signNormal((*normal)[0], (*normal)[1], (*normal)[2], *normal);
-      }
-      return normals_euclidean;
     }
   private:
     /** Stores R */
@@ -681,18 +675,18 @@ namespace cv
 {
   /** Default constructor of the Algorithm class that computes normals
    */
-  RgbdNormals::RgbdNormals(int rows, int cols, int depth, const cv::Mat & K, int window_size, int method)
+  RgbdNormals::RgbdNormals(int rows, int cols, int depth, InputArray K_in, int window_size, int method)
       :
         rows_(rows),
         cols_(cols),
         depth_(depth),
-        K_(K),
+        K_(K_in.getMat()),
         window_size_(window_size),
         method_(method),
         rgbd_normals_impl_(0)
   {
     CV_Assert(depth == CV_32F || depth == CV_64F);
-    CV_Assert(K_.cols == 3 && K.rows == 3);
+    CV_Assert(K_.cols == 3 && K_.rows == 3);
   }
 
   void delete_normals_impl(void *rgbd_normals_impl_, int method_, int depth)
@@ -792,34 +786,33 @@ namespace cv
   }
 
   /** Given a set of 3d points in a depth image, compute the normals at each point
-   * using the SRI method described in
-   * ``Fast and Accurate Computation of Surface Normals from Range Images``
-   * by H. Badino, D. Huber, Y. Park and T. Kanade
-   * @param depth depth a float depth image. Or it can be rows x cols x 3 is they are 3d points
-   * @param window_size the window size on which to compute the derivatives
-   * @return normals a rows x cols x 3 matrix
+   * @param points3d_in depth a float depth image. Or it can be rows x cols x 3 is they are 3d points
+   * @param normals a rows x cols x 3 matrix
    */
-  cv::Mat
-  RgbdNormals::operator()(const cv::Mat &in_points3d) const
+  void
+  RgbdNormals::operator()(InputArray points3d_in, OutputArray normals_out) const
   {
-    CV_Assert(in_points3d.dims == 2);
+    cv::Mat points3d_ori = points3d_in.getMat();
+
+    CV_Assert(points3d_ori.dims == 2);
     // Either we have 3d points or a depth image
     switch (method_)
     {
       case (RGBD_NORMALS_METHOD_FALS):
       {
-        CV_Assert( ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+        CV_Assert(points3d_ori.channels() == 3);
+        CV_Assert(points3d_ori.depth() == CV_32F || points3d_ori.depth() == CV_64F);
         break;
       }
       case RGBD_NORMALS_METHOD_LINEMOD:
       {
         CV_Assert(
-            ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)) || ((in_points3d.channels() == 1) && (in_points3d.depth() == CV_16U || in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+            ((points3d_ori.channels() == 3) && (points3d_ori.depth() == CV_32F || points3d_ori.depth() == CV_64F)) || ((points3d_ori.channels() == 1) && (points3d_ori.depth() == CV_16U || points3d_ori.depth() == CV_32F || points3d_ori.depth() == CV_64F)));
         break;
       }
       case RGBD_NORMALS_METHOD_SRI:
       {
-        CV_Assert( ((in_points3d.channels() == 3) && (in_points3d.depth() == CV_32F || in_points3d.depth() == CV_64F)));
+        CV_Assert( ((points3d_ori.channels() == 3) && (points3d_ori.depth() == CV_32F || points3d_ori.depth() == CV_64F)));
         break;
       }
     }
@@ -832,10 +825,10 @@ namespace cv
     if ((method_ == RGBD_NORMALS_METHOD_SRI) || (method_ == RGBD_NORMALS_METHOD_FALS))
     {
       // Make the points have the right depth
-      if (in_points3d.depth() == depth_)
-        points3d = in_points3d;
+      if (points3d_ori.depth() == depth_)
+        points3d = points3d_ori;
       else
-        in_points3d.convertTo(points3d, depth_);
+        points3d_ori.convertTo(points3d, depth_);
 
       // Compute the distance to the points
       if (depth_ == CV_32F)
@@ -845,46 +838,48 @@ namespace cv
     }
 
     // Get the normals
-    cv::Mat normals;
+    normals_out.create(points3d_ori.size(), CV_MAKETYPE(depth_, 3));
+    if (points3d_in.empty())
+      return;
+
+    cv::Mat normals = normals_out.getMat();
     switch (method_)
     {
       case (RGBD_NORMALS_METHOD_FALS):
       {
         if (depth_ == CV_32F)
-          normals = reinterpret_cast<const FALS<float> *>(rgbd_normals_impl_)->compute(points3d, radius);
+          reinterpret_cast<const FALS<float> *>(rgbd_normals_impl_)->compute(points3d, radius, normals);
         else
-          normals = reinterpret_cast<const FALS<double> *>(rgbd_normals_impl_)->compute(points3d, radius);
+          reinterpret_cast<const FALS<double> *>(rgbd_normals_impl_)->compute(points3d, radius, normals);
         break;
       }
       case RGBD_NORMALS_METHOD_LINEMOD:
       {
         // Only focus on the depth image for LINEMOD
         cv::Mat depth;
-        if (in_points3d.channels() == 3)
+        if (points3d_ori.channels() == 3)
         {
           std::vector<cv::Mat> channels;
           cv::split(points3d, channels);
           depth = channels[2];
         }
         else
-          depth = in_points3d;
+          depth = points3d_ori;
 
         if (depth_ == CV_32F)
-          normals = reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_)->compute(depth);
+          reinterpret_cast<const LINEMOD<float> *>(rgbd_normals_impl_)->compute(depth, normals);
         else
-          normals = reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_)->compute(depth);
+          reinterpret_cast<const LINEMOD<double> *>(rgbd_normals_impl_)->compute(depth, normals);
         break;
       }
       case RGBD_NORMALS_METHOD_SRI:
       {
         if (depth_ == CV_32F)
-          normals = reinterpret_cast<const SRI<float> *>(rgbd_normals_impl_)->compute(points3d, radius);
+          reinterpret_cast<const SRI<float> *>(rgbd_normals_impl_)->compute(points3d, radius, normals);
         else
-          normals = reinterpret_cast<const SRI<double> *>(rgbd_normals_impl_)->compute(points3d, radius);
+          reinterpret_cast<const SRI<double> *>(rgbd_normals_impl_)->compute(points3d, radius, normals);
         break;
       }
     }
-
-    return normals;
   }
 }

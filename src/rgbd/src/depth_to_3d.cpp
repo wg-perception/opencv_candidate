@@ -34,7 +34,6 @@
  */
 
 #include <opencv2/rgbd/rgbd.hpp>
-#include <iostream>
 #include <limits>
 
 #include "depth_to_3d.h"
@@ -54,10 +53,7 @@ namespace
   {
     CV_Assert((u_mat.size() == z_mat.size()) && (v_mat.size() == z_mat.size()));
     if (u_mat.empty())
-    {
-      points3d = cv::Mat();
       return;
-    }
     CV_Assert((u_mat.type() == z_mat.type()) && (v_mat.type() == z_mat.type()));
 
     //grab camera params
@@ -159,7 +155,6 @@ namespace
     for (int y = 0; y < in_depth.rows; ++y, ++y_cache_ptr)
       *y_cache_ptr = (y - oy) * inv_fy;
 
-    points3d = cv::Mat_<cv::Vec<T, 3> >(in_depth.rows, in_depth.cols);
     y_cache_ptr = y_cache[0];
     for (int y = 0; y < in_depth.rows; ++y, ++y_cache_ptr)
     {
@@ -190,10 +185,11 @@ namespace cv
    * @param points3d the resulting 3d points
    */
   void
-  depthTo3dSparse(const cv::Mat& depth, const cv::Mat& in_K, const cv::InputArray in_points, cv::Mat& points3d)
+  depthTo3dSparse(InputArray depth_in, InputArray K_in, InputArray points_in, OutputArray points3d_out)
   {
     // Make sure we use foat types
-    cv::Mat points = in_points.getMat();
+    cv::Mat points = points_in.getMat();
+    cv::Mat depth = depth_in.getMat();
 
     cv::Mat points_float;
     if (points.depth() != CV_32F)
@@ -217,7 +213,9 @@ namespace cv
     std::vector<cv::Mat> channels(2);
     cv::split(points_float, channels);
 
-    depthTo3d_from_uvz(in_K, channels[0], channels[1], z_mat, points3d);
+    points3d_out.create(channels[0].rows, 3, CV_32FC3);
+    cv::Mat points3d = points3d_out.getMat();
+    depthTo3d_from_uvz(K_in.getMat(), channels[0], channels[1], z_mat, points3d);
   }
 
   /**
@@ -228,8 +226,11 @@ namespace cv
    * @param mask the mask of the points to consider (can be empty)
    */
   void
-  depthTo3d(const cv::Mat& depth, const cv::Mat& K, cv::Mat& points3d, const cv::Mat& mask)
+  depthTo3d(InputArray depth_in, InputArray K_in, OutputArray points3d_out, InputArray mask_in)
   {
+    cv::Mat depth = depth_in.getMat();
+    cv::Mat K = K_in.getMat();
+    cv::Mat mask = mask_in.getMat();
     CV_Assert(K.cols == 3 && K.rows == 3 && (K.depth() == CV_64F || K.depth()==CV_32F));
     CV_Assert(
         depth.type() == CV_64FC1 || depth.type() == CV_32FC1 || depth.type() == CV_16UC1 || depth.type() == CV_16SC1);
@@ -245,6 +246,8 @@ namespace cv
       K_new = K;
 
     // Create 3D points in one go.
+    points3d_out.create(depth.size(), CV_MAKETYPE(K_new.depth(), 3));
+    cv::Mat points3d = points3d_out.getMat();
     if (!mask.empty())
       depthTo3dMask(depth, K, mask, points3d);
     else
@@ -254,6 +257,5 @@ namespace cv
       else
         depthTo3dNoMask<float>(depth, K_new, points3d);
     }
-
   }
 }

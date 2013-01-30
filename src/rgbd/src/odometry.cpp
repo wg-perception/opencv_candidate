@@ -1229,7 +1229,7 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
                    cv::norm(normalsComputer->get<Mat>("K"), cameraMatrix) > FLT_EPSILON)
                    normalsComputer = new RgbdNormals(frame->depth.rows, frame->depth.cols, frame->depth.depth(), cameraMatrix, normalWinSize, normalMethod);
 
-                frame->normals = (*normalsComputer)(frame->pyramidCloud[0]);
+                (*normalsComputer)(frame->pyramidCloud[0], frame->normals);
             }
         }
         checkNormals(frame->normals, frame->depth.size());
@@ -1339,7 +1339,7 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
                    cv::norm(normalsComputer->get<Mat>("K"), cameraMatrix) > FLT_EPSILON)
                    normalsComputer = new RgbdNormals(frame->depth.rows, frame->depth.cols, frame->depth.depth(), cameraMatrix, normalWinSize, normalMethod);
 
-                frame->normals = (*normalsComputer)(frame->pyramidCloud[0]);
+                (*normalsComputer)(frame->pyramidCloud[0], frame->normals);
             }
         }
         checkNormals(frame->normals, frame->depth.size());

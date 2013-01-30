@@ -531,36 +531,38 @@ private:
 namespace cv
 {
   void
-  RgbdPlane::operator()(const cv::Mat & points3d_in, cv::Mat &mask_out, std::vector<cv::Vec4f> & plane_coefficients)
+  RgbdPlane::operator()(InputArray points3d_in, OutputArray mask_out, OutputArray plane_coefficients)
   {
     this->operator()(points3d_in, cv::Mat(), mask_out, plane_coefficients);
   }
 
   void
-  RgbdPlane::operator()(const cv::Mat & points3d_in, const cv::Mat & normals_in, cv::Mat &mask_out,
-                        std::vector<cv::Vec4f> & plane_coefficients)
+  RgbdPlane::operator()(InputArray points3d_in, InputArray normals_in, OutputArray mask_out,
+                        OutputArray plane_coefficients_out)
   {
     cv::Mat_<cv::Vec3f> points3d, normals;
     if (points3d_in.depth() == CV_32F)
-      points3d = points3d_in;
+      points3d = points3d_in.getMat();
     else
-      points3d_in.convertTo(points3d, CV_32F);
+      points3d_in.getMat().convertTo(points3d, CV_32F);
     if (!normals_in.empty())
     {
       if (normals_in.depth() == CV_32F)
-        normals = normals_in;
+        normals = normals_in.getMat();
       else
-        normals_in.convertTo(normals, CV_32F);
+        normals_in.getMat().convertTo(normals, CV_32F);
     }
 
     // Pre-computations
-    cv::Mat_<unsigned char> & mask_out_uc = (cv::Mat_<unsigned char>&) mask_out;
-    mask_out_uc = cv::Mat_<unsigned char>(points3d_in.rows, points3d_in.cols, (unsigned char) (255));
+    mask_out.create(points3d.size(), CV_8U);
+    cv::Mat mask_out_mat = mask_out.getMat();
+    cv::Mat_<unsigned char> mask_out_uc = (cv::Mat_<unsigned char>&) mask_out_mat;
+    mask_out_uc.setTo(255);
     PlaneGrid plane_grid(points3d, block_size_);
     TileQueue plane_queue(plane_grid);
     size_t index_plane = 0;
 
-    plane_coefficients.clear();
+    std::vector<cv::Vec4f> plane_coefficients;
     float mse_min = threshold_ * threshold_;
 
     while (!plane_queue.empty())
@@ -622,5 +624,15 @@ namespace cv
         break;
       plane_coefficients.push_back(cv::Vec4f(plane->n()[0], plane->n()[1], plane->n()[2], plane->d()));
     };
+
+    // Fill the plane coefficients
+    if (plane_coefficients.empty())
+      return;
+    plane_coefficients_out.create(plane_coefficients.size(), 1, CV_32FC4);
+    cv::Mat plane_coefficients_mat = plane_coefficients_out.getMat();
+    float* data = plane_coefficients_mat.ptr<float>(0);
+    for(size_t i=0; i<plane_coefficients.size(); ++i)
+      for(uchar j=0; j<4; ++j, ++data)
+        *data = plane_coefficients[i][j];
   }
 }
