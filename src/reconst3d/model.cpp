@@ -15,6 +15,9 @@ static
 bool isPlyFile(const string& filename)
 {
     const int extSz = 3;
+    if(static_cast<int>(filename.size()) <= extSz)
+        return false;
+
     string ext = filename.substr(filename.size() - extSz, extSz);
     return ext == "ply";
 }
