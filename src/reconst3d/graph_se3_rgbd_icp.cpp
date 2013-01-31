@@ -12,6 +12,83 @@ using namespace cv;
 const double sobelScale = 1./8.;
 const double grayNormalScale = 1./255.;
 
+static
+void downsamplePoints(const Mat& points, vector<int>& downsampledIndices, size_t count)
+{
+    CV_Assert(count >= 2);
+    CV_Assert(points.total() >= count);
+    CV_Assert(points.type() == CV_32FC3);
+    CV_Assert(points.cols == 1 || points.rows == 1);
+
+    downsampledIndices.resize(count);
+
+    //TODO: optimize by exploiting symmetry in the distance matrix
+    Mat dists = Mat::zeros(points.total(), points.total(), CV_32FC1);
+    for(int i = 0; i < dists.rows; i++)
+    {
+        for(int j = i; j < dists.cols; j++)
+        {
+            float dist = (float)norm(points.at<Point3f>(i) - points.at<Point3f>(j));
+            dists.at<float>(j,i) = dists.at<float>(i,j) = dist;
+        }
+    }
+
+    double maxVal;
+    Point maxLoc;
+    minMaxLoc(dists, 0, &maxVal, 0, &maxLoc);
+
+    downsampledIndices[0] = maxLoc.x;
+    downsampledIndices[1] = maxLoc.y;
+
+    Mat activedDists(0, dists.cols, dists.type());
+    activedDists.push_back(dists.row(maxLoc.y));
+
+    Mat candidatePointsMask(1, dists.cols, CV_8UC1, Scalar(255));
+    candidatePointsMask.at<uchar>(0, maxLoc.y) = 0;
+
+    for(size_t i = 2; i < count; i++)
+    {
+        activedDists.push_back(dists.row(maxLoc.x));
+        candidatePointsMask.at<uchar>(0, maxLoc.x) = 0;
+
+        Mat minDists;
+        reduce(activedDists, minDists, 0, CV_REDUCE_MIN);
+        minMaxLoc(minDists, 0, &maxVal, 0, &maxLoc, candidatePointsMask);
+        downsampledIndices[i] = maxLoc.x;
+    }
+}
+
+void selectPosesSubset(const vector<Mat>& poses,
+                       const vector<int>& indices,
+                       vector<int>& selectedIndices, size_t count)
+{
+    if(indices.size() <= count)
+    {
+        selectedIndices = indices;
+        return;
+    }
+
+    vector<Point3f> origins(indices.size());
+    vector<int> totalIndices(indices.size());
+    for(size_t i = 0; i < indices.size(); i++)
+    {
+        const Mat_<double>& pose = poses[indices[i]];
+
+        Point3f origin;
+        origin.x = pose(0,3);
+        origin.y = pose(1,3);
+        origin.z = pose(2,3);
+
+        origins[i] = origin;
+        totalIndices[i] = indices[i];
+    }
+
+    downsamplePoints(Mat(origins), selectedIndices, count);
+
+    for(size_t i = 0; i < selectedIndices.size(); i++)
+        selectedIndices[i] = totalIndices[selectedIndices[i]];
+}
+
 static inline
 Eigen::Matrix<double, 2, 3> create_dPdG(const Mat& K, const Eigen::Vector3d& G)
 {

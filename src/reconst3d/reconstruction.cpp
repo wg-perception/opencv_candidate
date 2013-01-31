@@ -21,6 +21,15 @@ preparePosesLinksWithoutRt(const vector<PosesLink>& srcLinks, vector<PosesLink>&
         dstLinks[i] = PosesLink(srcLinks[i].srcIndex, srcLinks[i].dstIndex);
 }
 
+static void
+preparePosesLinksWithoutRt(const vector<int>& poseIndices, vector<PosesLink>& dstLinks)
+{
+    CV_Assert(poseIndices.size() > 2);
+    dstLinks.resize(poseIndices.size() - 1);
+    for(size_t i = 1; i < poseIndices.size(); i++)
+        dstLinks[i-1] = PosesLink(poseIndices[i-1], poseIndices[i]);
+}
+
 #if 0
 static
 void filterFramesByViewHist(vector<Ptr<RgbdFrame> >& frames,
@@ -201,7 +210,8 @@ prepareFramesForModelRefinement(const Ptr<TrajectoryFrames>& trajectoryFrames, c
 }
 
 ModelReconstructor::ModelReconstructor()
-    : isShowStepResults(false)
+    : isShowStepResults(false),
+      maxBAPosesCount(DEFAULT_MAX_BA_POSES_COUNT)
 {}
 
 void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFrames, const Mat& cameraMatrix,
@@ -232,7 +242,18 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
 
     // fill posesLinks with empty Rt because we want that they will be recomputed
     vector<PosesLink> keyframePosesLinks;
-    preparePosesLinksWithoutRt(trajectoryFrames->keyframePosesLinks, keyframePosesLinks);
+
+    if(maxBAPosesCount > 0 && maxBAPosesCount < static_cast<int>(frameIndices.size())-1)
+    {
+        vector<int> subsetIndices;
+        selectPosesSubset(refinedPosesSE3, frameIndices, subsetIndices, maxBAPosesCount);
+        std::sort(subsetIndices.begin(), subsetIndices.end());
+        preparePosesLinksWithoutRt(subsetIndices, keyframePosesLinks);
+    }
+    else
+    {
+        preparePosesLinksWithoutRt(trajectoryFrames->keyframePosesLinks, keyframePosesLinks);
+    }
 
     vector<Mat> refinedPosesSE3RgbdICP;
     const float pointsPart = 0.05f;

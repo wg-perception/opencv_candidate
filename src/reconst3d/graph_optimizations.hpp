@@ -99,6 +99,11 @@ int computeCorresps(const cv::Mat& K, const cv::Mat& K_inv, const cv::Mat& Rt1to
                     const cv::Mat& depth0, const cv::Mat& validMask0,
                     const cv::Mat& depth1, const cv::Mat& selectMask1, float maxDepthDiff,
                     cv::Mat& corresps);
+
+void selectPosesSubset(const std::vector<cv::Mat>& poses,
+                       const std::vector<int>& indices,
+                       std::vector<int>& selectedIndices, size_t count);
+
 // create solver
 //
 inline

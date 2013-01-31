@@ -39,14 +39,14 @@ Eigen::Matrix<double,6,6> informationMatrixSE3()
 }
 
 static
-g2o::EdgeSE3* createEdgeSE3(g2o::HyperGraph::Vertex* v0, g2o::HyperGraph::Vertex* v1, const Mat& Rt)
+g2o::EdgeSE3* createEdgeSE3(g2o::HyperGraph::Vertex* v0, g2o::HyperGraph::Vertex* v1, const Mat& Rt01)
 {
     g2o::EdgeSE3* g2o_edge = new g2o::EdgeSE3;
 
     g2o_edge->vertices()[0] = v0;
     g2o_edge->vertices()[1] = v1;
 
-    g2o_edge->setMeasurement(cv2G2O(Rt));
+    g2o_edge->setMeasurement(cv2G2O(Rt01.inv(DECOMP_SVD)));
     g2o_edge->setInformation(informationMatrixSE3());
 
     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
@@ -82,14 +82,14 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer,
         int srcVertexIndex = posesLinks[edgeIndex].srcIndex;
         int dstVertexIndex = posesLinks[edgeIndex].dstIndex;
 
-        // add vetices
+        // add vertices
         if(addGraphVertex(optimizer, srcVertexIndex, poses[srcVertexIndex]))
             frameIndices.push_back(srcVertexIndex);
         if(addGraphVertex(optimizer, dstVertexIndex, poses[dstVertexIndex]))
             frameIndices.push_back(dstVertexIndex);
 
         // add edge between the vertices
-        Mat Rt = posesLinks[edgeIndex].Rt.empty() ? poses[srcVertexIndex].inv(DECOMP_SVD) * poses[dstVertexIndex] : posesLinks[edgeIndex].Rt;
+        Mat Rt = posesLinks[edgeIndex].Rt.empty() ? poses[dstVertexIndex].inv(DECOMP_SVD) * poses[srcVertexIndex] : posesLinks[edgeIndex].Rt;
         optimizer->addEdge(createEdgeSE3(optimizer->vertex(srcVertexIndex), optimizer->vertex(dstVertexIndex), Rt));
     }
 

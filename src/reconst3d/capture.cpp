@@ -403,7 +403,7 @@ Ptr<TrajectoryFrames> CircularCaptureServer::finalize()
     CV_Assert((trajectoryFrames->frameStates[trajectoryFrames->frameStates.size()-1] & TrajectoryFrames::KEYFRAME) == TrajectoryFrames::KEYFRAME);
 
     if(!closureFrame.empty())
-        trajectoryFrames->keyframePosesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst));
+        trajectoryFrames->keyframePosesLinks.push_back(PosesLink(0, trajectoryFrames->poses.size()-1, closurePoseWithFirst.inv(DECOMP_SVD)));
 
     isFinalized = true;
 

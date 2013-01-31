@@ -57,6 +57,25 @@ CV_INIT_ALGORITHM_FIX(CircularCaptureServer, "ModelCapture.CircularCaptureServer
     obj.info()->addParam(obj, "isFinalized", obj.isFinalized, true);
     obj.info()->addParam(obj, "isLoopClosed", obj.isLoopClosed, true);)
 
+CV_INIT_ALGORITHM_FIX(Feature2dPoseEstimator, "ModelCapture.Feature2dPoseEstimator",
+    obj.info()->addParam(obj, "minInliersCount", obj.minInliersCount);
+    obj.info()->addParam(obj, "reliableInliersCount", obj.reliableInliersCount);
+    obj.info()->addParam(obj, "ransacMaxIterCount", obj.ransacMaxIterCount);
+    obj.info()->addParam(obj, "maxPointsDist2d", obj.maxPointsDist2d);
+    obj.info()->addParam(obj, "maxDistDiff3d", obj.maxDistDiff3d);
+    obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);)
+
+CV_INIT_ALGORITHM_FIX(ArbitraryCaptureServer, "ModelCapture.ArbitraryCaptureServer",
+    obj.info()->addParam(obj, "tableMasker", obj.tableMasker);
+    obj.info()->addParam(obj, "odometry", obj.odometry);
+    obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);
+    obj.info()->addParam(obj, "skippedTranslation", obj.skippedTranslation);
+    obj.info()->addParam(obj, "minTranslationDiff", obj.minTranslationDiff);
+    obj.info()->addParam(obj, "minRotationDiff", obj.minRotationDiff);
+    obj.info()->addParam(obj, "isInitialied", obj.isInitialied, true);
+    obj.info()->addParam(obj, "isFinalized", obj.isFinalized, true);)
+
 
 CV_INIT_ALGORITHM_FIX(ModelReconstructor, "ModelCapture.ModelReconstructor",
-    obj.info()->addParam(obj, "isShowStepResults", obj.isShowStepResults);)
+    obj.info()->addParam(obj, "isShowStepResults", obj.isShowStepResults);
+    obj.info()->addParam(obj, "maxBAPosesCount", obj.maxBAPosesCount);)

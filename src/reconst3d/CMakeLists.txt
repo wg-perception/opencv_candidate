@@ -25,6 +25,7 @@ add_library(opencv_candidate_reconst3d ${reconst3d_sources})
 target_link_libraries(opencv_candidate_reconst3d ${catkin_LIBRARIES}
                                                  ${OpenCV_LIBRARIES}
                                                  opencv_rgbd
+                                                 opencv_candidate
                                                  ${libg2o_LIBRARIES}
                                                  ${PCL_LIBRARIES}
                                                  cholmod
@@ -32,10 +33,17 @@ target_link_libraries(opencv_candidate_reconst3d ${catkin_LIBRARIES}
 )
 set_target_properties(opencv_candidate_reconst3d PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
 
-# add model capture sample
+# add model capture samples
 add_executable(circular_model_capture samples/circular_model_capture.cpp)
 target_link_libraries(circular_model_capture ${OpenCV_LIBRARIES}
                                     opencv_rgbd
                                     opencv_candidate_reconst3d
 )
 set_target_properties(circular_model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
+
+add_executable(arbitrary_model_capture samples/arbitrary_model_capture.cpp)
+target_link_libraries(arbitrary_model_capture ${OpenCV_LIBRARIES}
+                                    opencv_rgbd
+                                    opencv_candidate_reconst3d
+)
+set_target_properties(arbitrary_model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")

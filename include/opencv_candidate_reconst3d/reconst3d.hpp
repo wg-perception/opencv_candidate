@@ -2,6 +2,7 @@
 #define RECONST3D_HPP
 
 #include <opencv2/rgbd/rgbd.hpp>
+#include <opencv2/features2d/features2d.hpp>
 
 // Read frames from TOD-like base
 void readFrameIndices(const std::string& dirname, std::vector<std::string>& frameIndices);
@@ -158,6 +159,132 @@ protected:
     bool isInitialied, isFinalized;
 };
 
+class Feature2dPoseEstimator : public cv::Algorithm
+{
+public:
+    static const int DEFAULT_MIN_INLIERS_COUNT = 20;
+    static const int DEFAULT_RELIABLE_INLIERS_COUNT = 1000;
+    static const int DEFAULT_RANSAC_MAX_ITER_COUNT = 20000;
+    static double DEFAULT_MAX_POINTS_DIST2D(){return 3.;}
+    static double DEFAULT_MAX_DIST_DIFF3D(){return 0.01;}
+
+    Feature2dPoseEstimator();
+
+    cv::Mat operator()(const std::vector<cv::KeyPoint>& srcKeypoints, const cv::Mat& srcDescriptors, const cv::Mat& srcCloud,
+                       const std::vector<cv::KeyPoint>& dstKeypoints, const cv::Mat& dstDescriptors, const cv::Mat& dstCloud,
+                       std::vector<cv::DMatch>* matches=0) const;
+    cv::AlgorithmInfo*
+    info() const;
+
+protected:
+    cv::Mat estimateRt(const std::vector<cv::KeyPoint>& srcKeypoints, const std::vector<cv::KeyPoint>& dstKeypoints,
+                       const cv::Mat& srcCloud, const cv::Mat& dstCloud,
+                       std::vector<cv::DMatch>& matches) const;
+
+    int minInliersCount;
+    int reliableInliersCount;
+    int ransacMaxIterCount;
+    double maxPointsDist2d;
+    double maxDistDiff3d;
+    cv::Mat cameraMatrix;
+};
+
+class ArbitraryCaptureServer: public cv::Algorithm
+{
+public:
+    struct FramePushOutput
+    {
+        FramePushOutput();
+
+        bool isKeyframe;
+        cv::Mat pose;
+    };
+
+    static const int DEFAULT_MIN_OBJECT_SIZE = 50; //pixels
+    static double DEFAULT_MIN_TRANSLATION_DIFF() {return CircularCaptureServer::DEFAULT_MIN_TRANSLATION_DIFF();} //meters
+    static double DEFAULT_MIN_ROTATION_DIFF() {return CircularCaptureServer::DEFAULT_MIN_ROTATION_DIFF();} //degrees
+
+    ArbitraryCaptureServer();
+
+    FramePushOutput push(const cv::Mat& image, const cv::Mat& depth, int frameID);
+
+    void initialize(const cv::Size& frameResolution);
+
+    void reset();
+
+    cv::Ptr<TrajectoryFrames> finalize();
+
+    cv::AlgorithmInfo*
+    info() const;
+
+protected:
+    struct TrajectorySegment
+    {
+        TrajectorySegment();
+        void push(const cv::Ptr<cv::OdometryFrame>& frame, const cv::Mat& pose,
+                  const cv::Mat& objectMask, const cv::Mat& tableMask,
+                  const cv::Vec4f& tableCoeff, const cv::Mat& bgrImage);
+
+        std::vector<cv::Ptr<cv::OdometryFrame> > frames;
+        std::vector<cv::Mat> poses;
+
+        std::vector<cv::Mat> bgrImages;
+        std::vector<cv::Mat> objectMasks;
+        std::vector<cv::Mat> tableMasks;
+
+        std::vector<cv::Vec4f> tableCoeffs;
+
+        int representFrameIndex;
+        std::vector<cv::KeyPoint> representFrameKeypoints;
+        cv::Mat representFrameDescriptors;
+
+        cv::Ptr<cv::OdometryFrame> lastFrame;
+        cv::Mat lastPose;
+
+        bool isFinalized;
+    };
+
+    struct Feature2dEdge
+    {
+        Feature2dEdge(int srcSegmentIndex=-1, int srcFrameIndex=-1,
+                      int dstSegmentIndex=-1, int dstFrameIndex=-1,
+                      int inliersCount=0, const cv::Mat& Rt=cv::Mat());
+        int srcSegmentIndex;
+        int srcFrameIndex;
+        int dstSegmentIndex;
+        int dstFrameIndex;
+        int inliersCount;
+        cv::Mat Rt;
+    };
+
+    cv::Ptr<TrajectorySegment> getActiveSegment() const;
+    void estimateFeatures2dEdges(const std::vector<cv::KeyPoint>& srcKeypoints, const cv::Mat& srcDescriptors, const cv::Mat& cloud,
+                                 std::vector<Feature2dEdge>& edges, const cv::Mat& srcImage=cv::Mat()) const;
+    void finalizeLastSegment();
+    cv::Ptr<TrajectorySegment> createNewSegment();
+
+    // used algorithms
+    cv::Ptr<cv::RgbdNormals> normalsComputer; // inner only
+    cv::Ptr<TableMasker> tableMasker;
+    cv::Ptr<cv::Odometry> odometry;
+    cv::Ptr<cv::Feature2D> featureComputer;
+    cv::Ptr<Feature2dPoseEstimator> feature2dPoseEstimator;
+
+    // params
+    cv::Mat cameraMatrix;
+    double skippedTranslation;
+    double minTranslationDiff;
+    double minRotationDiff;
+    int minObjectSize;
+
+    // state variables
+    cv::Mat prevTableMask;
+    std::vector<cv::Ptr<TrajectorySegment> > trajectorySegments;
+    std::vector<Feature2dEdge> feature2dEdges;
+
+    bool isInitialied, isFinalized;
+};
+
 class ObjectModel
 {
 public:
@@ -177,7 +304,7 @@ public:
 class ModelReconstructor : public cv::Algorithm
 {
 public:
-
+    static const int DEFAULT_MAX_BA_POSES_COUNT = -1; // use all keyframes
     ModelReconstructor();
 
     void reconstruct(const cv::Ptr<TrajectoryFrames>& trajectoryFrames, const cv::Mat& cameraMatrix, cv::Ptr<ObjectModel>& model) const;
@@ -192,6 +319,7 @@ private:
     // TODO make more algorithm params available outside
 
     bool isShowStepResults;
+    int maxBAPosesCount;
 };
 
 #endif // RECONST3D_HPP
