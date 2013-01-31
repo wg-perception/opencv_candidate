@@ -40,7 +40,7 @@ CV_INIT_ALGORITHM_FIX(TableMasker, "ModelCapture.TableMasker",
     obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);)
 
 
-CV_INIT_ALGORITHM_FIX(OnlineCaptureServer, "ModelCapture.OnlineCaptureServer",
+CV_INIT_ALGORITHM_FIX(CircularCaptureServer, "ModelCapture.CircularCaptureServer",
     obj.info()->addParam(obj, "tableMasker", obj.tableMasker);
     obj.info()->addParam(obj, "odometry", obj.odometry);
     obj.info()->addParam(obj, "cameraMatrix", obj.cameraMatrix);

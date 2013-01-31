@@ -79,7 +79,7 @@ struct TrajectoryFrames
     std::vector<PosesLink> keyframePosesLinks;
 };
 
-class OnlineCaptureServer: public cv::Algorithm
+class CircularCaptureServer: public cv::Algorithm
 {
 public:
     struct FramePushOutput
@@ -102,7 +102,7 @@ public:
     static double DEFAULT_MIN_ROTATION_DIFF() {return 10;} //degrees
     static double DEFAULT_MAX_ROTATION_DIFF() {return 30;} //degrees
 
-    OnlineCaptureServer();
+    CircularCaptureServer();
 
     cv::Ptr<FramePushOutput> push(const cv::Mat& image, const cv::Mat& depth, int frameID);
 

@@ -70,7 +70,7 @@ int main(int argc, char** argv)
 
     Mat cameraMatrix = defaultCameraMatrix();
 
-    OnlineCaptureServer onlineCaptureServer;
+    CircularCaptureServer onlineCaptureServer;
     onlineCaptureServer.set("cameraMatrix", cameraMatrix);
     CV_Assert(!bgrImages[0].empty());
     onlineCaptureServer.initialize(bgrImages[0].size());//, TrajectoryFrames::VALIDFRAME);

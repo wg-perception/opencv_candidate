@@ -33,8 +33,8 @@ static
 float computeInliersRatio(const Ptr<OdometryFrame>& srcFrame,
                           const Ptr<OdometryFrame>& dstFrame,
                           const Mat& Rt, const Mat& cameraMatrix,
-                          int maxColorDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_COLOR_DIFF,
-                          float maxDepthDiff=OnlineCaptureServer::DEFAULT_MAX_CORRESP_DEPTH_DIFF())
+                          int maxColorDiff=CircularCaptureServer::DEFAULT_MAX_CORRESP_COLOR_DIFF,
+                          float maxDepthDiff=CircularCaptureServer::DEFAULT_MAX_CORRESP_DEPTH_DIFF())
 {
     Mat warpedSrcImage, warpedSrcDepth, warpedSrcMask;
     warpFrame(srcFrame->image, srcFrame->depth, srcFrame->mask,
@@ -74,11 +74,11 @@ void TrajectoryFrames::clear()
     keyframePosesLinks.clear();
 }
 
-OnlineCaptureServer::FramePushOutput::FramePushOutput()
+CircularCaptureServer::FramePushOutput::FramePushOutput()
     : frameState(0)
 {}
 
-OnlineCaptureServer::OnlineCaptureServer() :
+CircularCaptureServer::CircularCaptureServer() :
     maxCorrespColorDiff(DEFAULT_MAX_CORRESP_COLOR_DIFF),
     maxCorrespDepthDiff(DEFAULT_MAX_CORRESP_DEPTH_DIFF()),
     minInliersRatio(DEFAULT_MIN_INLIERS_RATIO()),
@@ -91,18 +91,18 @@ OnlineCaptureServer::OnlineCaptureServer() :
     isFinalized(false)
 {}
 
-void OnlineCaptureServer::filterImage(const Mat& src, Mat& dst) const
+void CircularCaptureServer::filterImage(const Mat& src, Mat& dst) const
 {
     dst = src; // TODO maybe median
     //medianBlur(src, dst, 3);
 }
 
-void OnlineCaptureServer::firterDepth(const Mat& src, Mat& dst) const
+void CircularCaptureServer::firterDepth(const Mat& src, Mat& dst) const
 {
     dst = src; // TODO maybe bilateral
 }
 
-Ptr<OnlineCaptureServer::FramePushOutput> OnlineCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
+Ptr<CircularCaptureServer::FramePushOutput> CircularCaptureServer::push(const Mat& _image, const Mat& _depth, int frameID)
 {
     Ptr<FramePushOutput> pushOutput = new FramePushOutput();
 
@@ -278,7 +278,7 @@ Ptr<OnlineCaptureServer::FramePushOutput> OnlineCaptureServer::push(const Mat& _
     return pushOutput;
 }
 
-void OnlineCaptureServer::reset()
+void CircularCaptureServer::reset()
 {
     trajectoryFrames = new TrajectoryFrames();
 
@@ -306,7 +306,7 @@ void OnlineCaptureServer::reset()
     isFinalized = false;
 }
 
-void OnlineCaptureServer::initialize(const Size& frameResolution, int storeFramesWithState)
+void CircularCaptureServer::initialize(const Size& frameResolution, int storeFramesWithState)
 {
     CV_Assert(storeFramesWithState == TrajectoryFrames::VALIDFRAME || storeFramesWithState == TrajectoryFrames::KEYFRAME);
 
@@ -330,7 +330,7 @@ void OnlineCaptureServer::initialize(const Size& frameResolution, int storeFrame
     isInitialied = true;
 }
 
-Ptr<TrajectoryFrames> OnlineCaptureServer::finalize()
+Ptr<TrajectoryFrames> CircularCaptureServer::finalize()
 {
     CV_Assert(isInitialied);
     CV_Assert(!isFinalized);

@@ -33,9 +33,9 @@ target_link_libraries(opencv_candidate_reconst3d ${catkin_LIBRARIES}
 set_target_properties(opencv_candidate_reconst3d PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
 
 # add model capture sample
-add_executable(model_capture samples/model_capture.cpp)
-target_link_libraries(model_capture ${OpenCV_LIBRARIES}
+add_executable(circular_model_capture samples/circular_model_capture.cpp)
+target_link_libraries(circular_model_capture ${OpenCV_LIBRARIES}
                                     opencv_rgbd
                                     opencv_candidate_reconst3d
 )
-set_target_properties(model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
+set_target_properties(circular_model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
