@@ -45,7 +45,7 @@ namespace
    * @param K
    * @param depth the depth image
    * @param mask the mask of the points to consider (can be empty)
-   * @param points3d the resulting 3d points
+   * @param points3d the resulting 3d points, a 3-channel matrix
    */
   void
   depthTo3d_from_uvz(const cv::Mat& in_K, const cv::Mat& u_mat, const cv::Mat& v_mat, const cv::Mat& z_mat,
@@ -93,9 +93,7 @@ namespace
   depthTo3dMask(const cv::Mat& depth, const cv::Mat& K, const cv::Mat& mask, cv::Mat& points3d)
   {
     // Create 3D points in one go.
-    cv::Size depth_size = depth.size();
-    cv::Mat_<float> u_mat = cv::Mat_<float>(depth_size.area(), 1), v_mat = cv::Mat_<float>(depth_size.area(), 1),
-        z_mat = cv::Mat_<float>(depth_size.area(), 1);
+    cv::Mat_<float> u_mat, v_mat, z_mat;
 
     cv::Mat_<uchar> uchar_mask = mask;
 
@@ -213,7 +211,7 @@ namespace cv
     std::vector<cv::Mat> channels(2);
     cv::split(points_float, channels);
 
-    points3d_out.create(channels[0].rows, 3, CV_32FC3);
+    points3d_out.create(channels[0].rows, channels[0].cols, CV_32FC3);
     cv::Mat points3d = points3d_out.getMat();
     depthTo3d_from_uvz(K_in.getMat(), channels[0], channels[1], z_mat, points3d);
   }
@@ -246,12 +244,18 @@ namespace cv
       K_new = K;
 
     // Create 3D points in one go.
-    points3d_out.create(depth.size(), CV_MAKETYPE(K_new.depth(), 3));
-    cv::Mat points3d = points3d_out.getMat();
+    cv::Mat points3d;
     if (!mask.empty())
-      depthTo3dMask(depth, K, mask, points3d);
+    {
+      cv::Mat points3d;
+      depthTo3dMask(depth, K_new, mask, points3d);
+      points3d_out.create(points3d.size(), CV_MAKETYPE(K_new.depth(), 3));
+      points3d.copyTo(points3d_out.getMat());
+    }
     else
     {
+      points3d_out.create(depth.size(), CV_MAKETYPE(K_new.depth(), 3));
+      cv::Mat points3d = points3d_out.getMat();
       if (K_new.depth() == CV_64F)
         depthTo3dNoMask<double>(depth, K_new, points3d);
       else
