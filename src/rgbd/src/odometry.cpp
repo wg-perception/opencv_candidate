@@ -174,8 +174,11 @@ void preparePyramidDepth(const Mat& depth, vector<Mat>& pyramidDepth, size_t lev
 
 static
 void preparePyramidMask(const Mat& mask, const vector<Mat>& pyramidDepth, float minDepth, float maxDepth,
+                        const vector<Mat>& pyramidNormal,
                         vector<Mat>& pyramidMask)
 {
+    minDepth = std::max(0.f, minDepth);
+
     if(!pyramidMask.empty())
     {
         if(pyramidMask.size() != pyramidDepth.size())
@@ -195,18 +198,31 @@ void preparePyramidMask(const Mat& mask, const vector<Mat>& pyramidDepth, float 
         else
             validMask = mask.clone();
 
-        Mat depth = pyramidDepth[0].clone();
-        patchNaNs(depth, 0);
+        buildPyramid(validMask, pyramidMask, pyramidDepth.size() - 1);
 
-        minDepth = std::max(0.f, minDepth);
-        validMask &= (depth > minDepth) & (depth < maxDepth);
-
-        pyramidMask.resize(pyramidDepth.size());
-        pyramidMask[0] = validMask;
-        for(size_t i = 1; i < pyramidMask.size(); i++)
+        for(size_t i = 0; i < pyramidMask.size(); i++)
         {
-            pyrDown(pyramidMask[i-1], pyramidMask[i]);
-            pyramidMask[i].setTo(0, pyramidMask[i] != 255);
+            Mat levelDepth = pyramidDepth[i].clone();
+            patchNaNs(levelDepth, 0);
+
+            Mat& levelMask = pyramidMask[i];
+            levelMask &= (levelDepth > minDepth) & (levelDepth < maxDepth);
+
+            if(!pyramidNormal.empty())
+            {
+                CV_Assert(pyramidNormal[i].type() == CV_32FC3);
+                CV_Assert(pyramidNormal[i].size() == pyramidDepth[i].size());
+                Mat levelNormal = pyramidNormal[i].clone();
+
+                Mat validNormalMask = levelNormal == levelNormal; // otherwise it's Nan
+                CV_Assert(validNormalMask.type() == CV_8UC3);
+
+                vector<Mat> channelMasks;
+                split(validNormalMask, channelMasks);
+                validNormalMask = channelMasks[0] & channelMasks[1] & channelMasks[2];
+
+                levelMask &= validNormalMask;
+            }
         }
     }
 }
@@ -1135,7 +1151,8 @@ Size RgbdOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) c
 
     preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
+    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth,
+                       frame->pyramidNormals, frame->pyramidMask);
 
     if(cacheType & OdometryFrame::CACHE_SRC)
         preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
@@ -1211,8 +1228,6 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
 
     preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
-
     preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
 
     if(cacheType & OdometryFrame::CACHE_DST)
@@ -1236,8 +1251,14 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
 
         preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
+        preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth,
+                           frame->pyramidNormals, frame->pyramidMask);
+
         preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, maxPointsPart, frame->pyramidNormalsMask);
     }
+    else
+        preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth,
+                           frame->pyramidNormals, frame->pyramidMask);
 
     return frame->depth.size();
 }
@@ -1316,17 +1337,10 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
 
     preparePyramidDepth(frame->depth, frame->pyramidDepth, iterCounts.total());
 
-    preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth, frame->pyramidMask);
-
     preparePyramidCloud(frame->pyramidDepth, cameraMatrix, frame->pyramidCloud);
 
     if(cacheType & OdometryFrame::CACHE_DST)
     {
-        preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
-        preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
-        preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy,
-                                   minGradientMagnitudes, frame->pyramidMask,
-                                   maxPointsPart, frame->pyramidTexturedMask);
         if(frame->normals.empty())
         {
             if(!frame->pyramidNormals.empty())
@@ -1346,8 +1360,20 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
 
         preparePyramidNormals(frame->normals, frame->pyramidDepth, frame->pyramidNormals);
 
+        preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth,
+                           frame->pyramidNormals, frame->pyramidMask);
+
+        preparePyramidSobel(frame->pyramidImage, 1, 0, frame->pyramid_dI_dx);
+        preparePyramidSobel(frame->pyramidImage, 0, 1, frame->pyramid_dI_dy);
+        preparePyramidTexturedMask(frame->pyramid_dI_dx, frame->pyramid_dI_dy,
+                                   minGradientMagnitudes, frame->pyramidMask,
+                                   maxPointsPart, frame->pyramidTexturedMask);
+
         preparePyramidNormalsMask(frame->pyramidNormals, frame->pyramidMask, maxPointsPart, frame->pyramidNormalsMask);
     }
+    else
+        preparePyramidMask(frame->mask, frame->pyramidDepth, minDepth, maxDepth,
+                           frame->pyramidNormals, frame->pyramidMask);
 
     return frame->image.size();
 }
