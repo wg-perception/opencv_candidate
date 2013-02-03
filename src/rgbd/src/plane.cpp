@@ -622,7 +622,10 @@ namespace cv
       ++index_plane;
       if (index_plane >= 255)
         break;
-      plane_coefficients.push_back(cv::Vec4f(plane->n()[0], plane->n()[1], plane->n()[2], plane->d()));
+      cv::Vec4f coeffs(plane->n()[0], plane->n()[1], plane->n()[2], plane->d());
+      if (coeffs(2) > 0)
+        coeffs = -coeffs;
+      plane_coefficients.push_back(coeffs);
     };
 
     // Fill the plane coefficients

@@ -295,7 +295,8 @@ namespace cv
      * @param the normals for every point in the depth image
      * @param mask An image where each pixel is labeled with the plane it belongs to
      *        and 255 if it does not belong to any plane
-     * @param the coefficients of the corresponding planes (a,b,c,d) such that ax+by+cz+d=0 and norm(a,b,c)=1
+     * @param the coefficients of the corresponding planes (a,b,c,d) such that ax+by+cz+d=0, norm(a,b,c)=1
+     *        and c < 0 (so that the normal points towards the camera)
      */
     void
     operator()(InputArray points3d, InputArray normals, OutputArray mask,
