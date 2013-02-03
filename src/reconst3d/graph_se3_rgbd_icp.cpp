@@ -226,9 +226,8 @@ namespace g2o {
 }
 
 //---------------------------------------------------------------------------------------------------------
-// TODO: add a check of normals
 // this function is from *Odometry implementation
-
+static
 int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
                     const Mat& depth0, const Mat& validMask0,
                     const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
@@ -322,7 +321,70 @@ int computeCorresps(const Mat& K, const Mat& K_inv, const Mat& Rt,
     return correspCount;
 }
 
-void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<OdometryFrame> >& frames,
+int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
+                            const Mat& depth0, const Mat& validMask0,
+                            const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
+                            Mat& corresps,
+                            const Mat& normals0, const Mat& normals1,
+                            const Mat& image0, const Mat& image1,
+                            float maxColorDiff)
+{
+    const double maxNormalsDiff = 30; // in degrees
+    const double maxNormalAngleDev = 75; // in degrees
+
+    computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
+                    maxDepthDiff, corresps);
+
+    CV_Assert(Rt.type() == CV_64FC1);
+    const double * Rt_ptr = Rt.ptr<double>();
+
+    int count = 0;
+    const Point3f Oz_inv(0,0,-1); // TODO replace by vector to camera position?
+    for(int v0 = 0; v0 < corresps.rows; v0++)
+    {
+        for(int u0 = 0; u0 < corresps.cols; u0++)
+        {
+            int c = corresps.at<int>(v0, u0);
+            if(c != -1)
+            {
+                Point3f n0 = normals0.at<Point3f>(v0,u0);
+                n0 *= 1./cv::norm(n0);
+                if(std::abs(n0.ddot(Oz_inv)) < std::cos(maxNormalAngleDev / 180 * CV_PI))
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+
+                int u1, v1;
+                get2shorts(c, u1, v1);
+
+                const Point3f& n1 = normals1.at<Point3f>(v1,u1);
+                Point3f tn1;
+                tn1.x = n1.x * Rt_ptr[0] + n1.y * Rt_ptr[1] + n1.z * Rt_ptr[2] + Rt_ptr[3];
+                tn1.y = n1.x * Rt_ptr[4] + n1.y * Rt_ptr[5] + n1.z * Rt_ptr[6] + Rt_ptr[7];
+                tn1.z = n1.x * Rt_ptr[8] + n1.y * Rt_ptr[9] + n1.z * Rt_ptr[10] + Rt_ptr[11];
+                tn1 *= 1./cv::norm(tn1);
+
+                if(std::abs(n0.ddot(tn1)) < std::cos(maxNormalsDiff / 180 * CV_PI))
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+
+                if(std::abs(image0.at<uchar>(v0,u0) - image1.at<uchar>(v1,u1)) > maxColorDiff)
+                {
+                    corresps.at<int>(v0, u0) = -1;
+                    continue;
+                }
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, int pyramidLevel, const std::vector<Ptr<OdometryFrame> >& frames,
                          const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix_64F,
                          std::vector<int>& frameIndices)
 {
@@ -331,7 +393,7 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
 
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
-    const double maxDepthDiff = 0.01;
+    const double maxDepthDiff = 0.07;
 
     fillGraphSE3(optimizer, poses, posesLinks, frameIndices);
 
@@ -340,8 +402,8 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
     {
         int currFrameIdx = frameIndices[currIdx];
 
-        const Mat& curCloud = frames[currFrameIdx]->pyramidCloud[0];
-        const Mat& curNormals = frames[currFrameIdx]->normals;
+        const Mat& curCloud = frames[currFrameIdx]->pyramidCloud[pyramidLevel];
+        const Mat& curNormals = frames[currFrameIdx]->pyramidNormals[pyramidLevel];
 
         for(size_t prevIdx = 0; prevIdx < frameIndices.size(); prevIdx++)
         {
@@ -349,8 +411,8 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
             if(currFrameIdx == prevFrameIdx)
                 continue;
 
-            const Mat& prevCloud = frames[prevFrameIdx]->pyramidCloud[0];
-            const Mat& prevNormals = frames[prevFrameIdx]->normals;
+            const Mat& prevCloud = frames[prevFrameIdx]->pyramidCloud[pyramidLevel];
+            const Mat& prevNormals = frames[prevFrameIdx]->pyramidNormals[pyramidLevel];
 
             Mat curToPrevRt = poses[prevFrameIdx].inv(DECOMP_SVD) * poses[currFrameIdx];
             if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
@@ -360,23 +422,31 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
             CV_Assert(!frames[currFrameIdx]->pyramidMask.empty());
             CV_Assert(!frames[prevFrameIdx]->pyramidNormalsMask.empty());
             CV_Assert(!frames[prevFrameIdx]->pyramidTexturedMask.empty());
-            int correspsCount_icp = computeCorresps(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
-                                                frames[currFrameIdx]->depth,
-                                                frames[currFrameIdx]->pyramidMask[0],
-                                                frames[prevFrameIdx]->depth,
-                                                frames[prevFrameIdx]->pyramidNormalsMask[0],
-                                                maxDepthDiff, corresps_icp);
+            int correspsCount_icp = computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
+                                                            frames[currFrameIdx]->pyramidDepth[pyramidLevel],
+                                                            frames[currFrameIdx]->pyramidMask[pyramidLevel],
+                                                            frames[prevFrameIdx]->pyramidDepth[pyramidLevel],
+                                                            frames[prevFrameIdx]->pyramidNormalsMask[pyramidLevel],
+                                                            maxDepthDiff, corresps_icp,
+                                                            frames[currFrameIdx]->pyramidNormals[pyramidLevel],
+                                                            frames[prevFrameIdx]->pyramidNormals[pyramidLevel],
+                                                            frames[currFrameIdx]->pyramidImage[pyramidLevel],
+                                                            frames[prevFrameIdx]->pyramidImage[pyramidLevel]);
 #define WITH_RGBD 1
 #if WITH_RGBD
             const double rgbdScale = 1./(255 * std::max(cameraMatrix_64F.at<double>(0,0), cameraMatrix_64F.at<double>(1,1)));
 
             Mat corresps_rgbd;
-            int correspsCount_rgbd = computeCorresps(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
-                                                frames[currFrameIdx]->depth,
-                                                frames[currFrameIdx]->pyramidMask[0],
-                                                frames[prevFrameIdx]->depth,
-                                                frames[prevFrameIdx]->pyramidTexturedMask[0],
-                                                maxDepthDiff, corresps_rgbd);
+            int correspsCount_rgbd = computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_64F.inv(), curToPrevRt.inv(DECOMP_SVD),
+                                                             frames[currFrameIdx]->pyramidDepth[pyramidLevel],
+                                                             frames[currFrameIdx]->pyramidMask[pyramidLevel],
+                                                             frames[prevFrameIdx]->pyramidDepth[pyramidLevel],
+                                                             frames[prevFrameIdx]->pyramidTexturedMask[pyramidLevel],
+                                                             maxDepthDiff, corresps_rgbd,
+                                                             frames[currFrameIdx]->pyramidNormals[pyramidLevel],
+                                                             frames[prevFrameIdx]->pyramidNormals[pyramidLevel],
+                                                             frames[currFrameIdx]->pyramidImage[pyramidLevel],
+                                                             frames[prevFrameIdx]->pyramidImage[pyramidLevel]);
 #endif
 
             cout << currFrameIdx << " -> " << prevFrameIdx << ": icp correspondences count " << correspsCount_icp << endl;
@@ -435,19 +505,18 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
                     {
                         int srcIdx = currFrameIdx;
                         int dstIdx = prevFrameIdx;
-                        int pyramidIdx = 0;
                         g2o::Edge_V_V_RGBD * e = new g2o::Edge_V_V_RGBD();
                         e->setVertex(0, optimizer->vertex(srcIdx));
                         e->setVertex(1, optimizer->vertex(dstIdx));
 
                         g2o::EdgeRGBD meas;
-                        meas.srcColor = frames[srcIdx]->pyramidImage[pyramidIdx].at<uchar>(v0, u0);
-                        meas.dstColor = frames[dstIdx]->pyramidImage[pyramidIdx].at<uchar>(v1, u1);
+                        meas.srcColor = frames[srcIdx]->pyramidImage[pyramidLevel].at<uchar>(v0, u0);
+                        meas.dstColor = frames[dstIdx]->pyramidImage[pyramidLevel].at<uchar>(v1, u1);
 
-                        meas.dst_dIdx = frames[dstIdx]->pyramid_dI_dx[pyramidIdx].at<short int>(v1, u1);
-                        meas.dst_dIdy = frames[dstIdx]->pyramid_dI_dy[pyramidIdx].at<short int>(v1, u1);
+                        meas.dst_dIdx = frames[dstIdx]->pyramid_dI_dx[pyramidLevel].at<short int>(v1, u1);
+                        meas.dst_dIdy = frames[dstIdx]->pyramid_dI_dy[pyramidLevel].at<short int>(v1, u1);
 
-                        meas.srcP3d = cvtPoint_ocv2egn(frames[srcIdx]->pyramidCloud[pyramidIdx].at<Point3f>(v0, u0));
+                        meas.srcP3d = cvtPoint_ocv2egn(frames[srcIdx]->pyramidCloud[pyramidLevel].at<Point3f>(v0, u0));
 
                         meas.K = &cameraMatrix_64F;
 
@@ -468,6 +537,22 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, const std::vector<Ptr<
     }
 }
 
+static
+void buildPyramidCameraMatrix(const Mat& cameraMatrix, int levels, vector<Mat>& pyramidCameraMatrix)
+{
+    pyramidCameraMatrix.resize(levels);
+
+    Mat cameraMatrix_dbl;
+    cameraMatrix.convertTo(cameraMatrix_dbl, CV_64FC1);
+
+    for(int i = 0; i < levels; i++)
+    {
+        Mat levelCameraMatrix = i == 0 ? cameraMatrix_dbl : 0.5f * pyramidCameraMatrix[i-1];
+        levelCameraMatrix.at<double>(2,2) = 1.;
+        pyramidCameraMatrix[i] = levelCameraMatrix;
+    }
+}
+
 void refineGraphSE3RgbdICP(const std::vector<Ptr<RgbdFrame> >& _frames,
                            const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks,
                            const Mat& cameraMatrix, float pointsPart,
@@ -475,15 +560,20 @@ void refineGraphSE3RgbdICP(const std::vector<Ptr<RgbdFrame> >& _frames,
 {
     CV_Assert(_frames.size() == poses.size());
 
-    const int iterCount = 5;
     // TODO: find corresp to main API?
-    // TODO: odom with one level here
+    vector<float> minGradientMagnitudes(3);
+    minGradientMagnitudes[0] = 10;
+    minGradientMagnitudes[1] = 5;
+    minGradientMagnitudes[2] = 1;
+    vector<int> iterCounts(3);
+    iterCounts[0] = 3;
+    iterCounts[1] = 4;
+    iterCounts[2] = 2;
+
     RgbdICPOdometry odom;
-    vector<float> minGradientMagnitudes(1,10);
-    vector<int> iterCounts(1,10);
     odom.set("maxPointsPart", pointsPart);
-    odom.set("minGradientMagnitudes", Mat(minGradientMagnitudes).clone());
-    odom.set("iterCounts", Mat(iterCounts).clone());
+    odom.set("minGradientMagnitudes", Mat(minGradientMagnitudes));
+    odom.set("iterCounts", Mat(iterCounts));
     odom.set("cameraMatrix", cameraMatrix);
 
     std::vector<Ptr<OdometryFrame> > frames(_frames.size());
@@ -502,34 +592,37 @@ void refineGraphSE3RgbdICP(const std::vector<Ptr<RgbdFrame> >& _frames,
     for(size_t i = 0; i < poses.size(); i++)
         refinedPoses[i] = poses[i].clone();
 
-    Mat cameraMatrix_64F;
-    cameraMatrix.convertTo(cameraMatrix_64F, CV_64FC1);
+    vector<Mat> pyramidCameraMatrix;
+    buildPyramidCameraMatrix(cameraMatrix, iterCounts.size(), pyramidCameraMatrix);
 
-    for(int iter = 0; iter < iterCount; iter++)
+    for(int level = iterCounts.size() - 1; level >= 0; level--)
     {
-        G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
-        G2OBlockSolver* blockSolver = createBlockSolver(linearSolver);
-        g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
-        g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
-
-        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
-
-        optimizer->initializeOptimization();
-        const int optIterCount = 1;
-        cout << "Vertices count: " << optimizer->vertices().size() << endl;
-        cout << "Edges count: " << optimizer->edges().size() << endl;
-        cout << "Start optimization " << endl;
-        if(optimizer->optimize(optIterCount) != optIterCount)
+        for(int iter = 0; iter < iterCounts[level]; iter++)
         {
+            G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
+            G2OBlockSolver* blockSolver = createBlockSolver(linearSolver);
+            g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
+            g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
+
+            fillGraphSE3RgbdICP(optimizer, level, frames, refinedPoses, posesLinks, pyramidCameraMatrix[level], frameIndices);
+
+            optimizer->initializeOptimization();
+            const int optIterCount = 1;
+            cout << "Vertices count: " << optimizer->vertices().size() << endl;
+            cout << "Edges count: " << optimizer->edges().size() << endl;
+            cout << "Start optimization " << endl;
+            if(optimizer->optimize(optIterCount) != optIterCount)
+            {
+                optimizer->clear();
+                delete optimizer;
+                break;
+            }
+            cout << "Finish optimization " << endl;
+
+            getSE3Poses(optimizer, frameIndices, refinedPoses);
+
             optimizer->clear();
             delete optimizer;
-            break;
         }
-        cout << "Finish optimization " << endl;
-
-        getSE3Poses(optimizer, frameIndices, refinedPoses);
-
-        optimizer->clear();
-        delete optimizer;
     }
 }

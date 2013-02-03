@@ -73,9 +73,8 @@ cv::Mat cvtIsometry_egn2ocv(const Eigen::Isometry3d& egn_o)
 
     return ocv_o;
 }
-// corresps
-//
 
+// corresps
 inline
 void set2shorts(int& dst, int short_v1, int short_v2)
 {
@@ -93,12 +92,13 @@ void get2shorts(int src, int& short_v1, int& short_v2)
     short_v2 = ptr[1];
 }
 
-// TODO: add a check of normals
-// this function is from *Odometry implementation
-int computeCorresps(const cv::Mat& K, const cv::Mat& K_inv, const cv::Mat& Rt1to0,
-                    const cv::Mat& depth0, const cv::Mat& validMask0,
-                    const cv::Mat& depth1, const cv::Mat& selectMask1, float maxDepthDiff,
-                    cv::Mat& corresps);
+int computeCorrespsFiltered(const cv::Mat& K, const cv::Mat& K_inv, const cv::Mat& Rt,
+                            const cv::Mat& depth0, const cv::Mat& validMask0,
+                            const cv::Mat& depth1, const cv::Mat& selectMask1, float maxDepthDiff,
+                            cv::Mat& corresps,
+                            const cv::Mat& normals0, const cv::Mat& normals1,
+                            const cv::Mat& image0, const cv::Mat& image1,
+                            float maxColorDiff = FLT_MAX);
 
 void selectPosesSubset(const std::vector<cv::Mat>& poses,
                        const std::vector<int>& indices,
@@ -176,7 +176,7 @@ void refineGraphSE3Segment(const std::vector<cv::Mat>& odometryPoses,
 
 
 // Graph with 2 types of edges: odometry and Rgbd+ICP for correspondences.
-void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer,
+void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, int pyramidLevel,
                          const std::vector<cv::Ptr<cv::OdometryFrame> >& frames,
                          const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
                          std::vector<int>& frameIndices);

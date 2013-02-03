@@ -103,58 +103,6 @@ namespace g2o {
     }
 }
 
-static
-void computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
-                            const Mat& depth0, const Mat& validMask0,
-                            const Mat& depth1, const Mat& selectMask1, float maxDepthDiff,
-                            Mat& corresps,
-                            const Mat& normals0, const Mat& transformedNormals1,
-                            const Mat& image0, const Mat& image1)
-{
-    const double maxNormalsDiff = 30; // in degrees
-    const double maxColorDiff = 50;
-    const double maxNormalAngleDev = 75; // in degrees
-
-    computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
-                    maxDepthDiff, corresps);
-
-    const Point3f Oz_inv(0,0,-1); // TODO replace by vector to camera position?
-    for(int v0 = 0; v0 < corresps.rows; v0++)
-    {
-        for(int u0 = 0; u0 < corresps.cols; u0++)
-        {
-            int c = corresps.at<int>(v0, u0);
-            if(c != -1)
-            {
-                Point3f curNormal = normals0.at<Point3f>(v0,u0);
-                curNormal *= 1./cv::norm(curNormal);
-                if(std::abs(curNormal.ddot(Oz_inv)) < std::cos(maxNormalAngleDev / 180 * CV_PI))
-                {
-                    corresps.at<int>(v0, u0) = -1;
-                    continue;
-                }
-
-                int u1, v1;
-                get2shorts(c, u1, v1);
-
-                Point3f transfPrevNormal = transformedNormals1.at<Point3f>(v1,u1);
-                transfPrevNormal *= 1./cv::norm(transfPrevNormal);
-                if(std::abs(curNormal.ddot(transfPrevNormal)) < std::cos(maxNormalsDiff / 180 * CV_PI))
-                {
-                    corresps.at<int>(v0, u0) = -1;
-                    continue;
-                }
-
-                if(std::abs(image0.at<uchar>(v0,u0) - image1.at<uchar>(v1,u1)) > maxColorDiff)
-                {
-                    corresps.at<int>(v0, u0) = -1;
-                    continue;
-                }
-            }
-        }
-    }
-}
-
 void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                 const std::vector<Mat>& poses, const std::vector<PosesLink>& posesLinks, const Mat& cameraMatrix,
                                 std::vector<Mat>& refinedPoses, std::vector<int>& frameIndices)
@@ -200,6 +148,7 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
 
     const int iterCount = 3;//7
     const int minCorrespCount = 3;
+    const float maxColorDiff = 50;
 
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
@@ -210,7 +159,7 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphSE3RgbdICP(optimizer, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
+        fillGraphSE3RgbdICP(optimizer, 0, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
 
         vector<Mat> vertexIndices(frameIndices.size());
         int vertexIdx = frames.size();
@@ -236,9 +185,6 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
-                Mat transformedPrevNormals;
-                perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
-                                     curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
                 computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
                                         frames[currFrameIdx]->depth,
@@ -247,9 +193,10 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                         frames[prevFrameIdx]->pyramidNormalsMask[0],
                                         maxDepthDiff, corresps,
                                         frames[currFrameIdx]->pyramidNormals[0],
-                                        transformedPrevNormals,
+                                        frames[prevFrameIdx]->pyramidNormals[0],
                                         frames[currFrameIdx]->image,
-                                        frames[prevFrameIdx]->image);
+                                        frames[prevFrameIdx]->image,
+                                        maxColorDiff);
 
                 for(int v0 = 0; v0 < corresps.rows; v0++)
                 {
@@ -275,22 +222,20 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                 if(tvecNorm(curToPrevRt) > maxTranslation || rvecNormDegrees(curToPrevRt) > maxRotation)
                     continue;
 
-                Mat transformedPrevNormals;
-                perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
-                                     curToPrevRt.inv(DECOMP_SVD));
                 Mat corresps;
-                computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
+                int correspsCount = computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
                                         frames[currFrameIdx]->depth,
                                         frames[currFrameIdx]->pyramidMask[0],
                                         frames[prevFrameIdx]->depth,
                                         frames[prevFrameIdx]->pyramidNormalsMask[0],
                                         maxDepthDiff, corresps,
                                         frames[currFrameIdx]->pyramidNormals[0],
-                                        transformedPrevNormals,
+                                        frames[prevFrameIdx]->pyramidNormals[0],
                                         frames[currFrameIdx]->image,
-                                        frames[prevFrameIdx]->image);
+                                        frames[prevFrameIdx]->image,
+                                        maxColorDiff);
 
-                std::cout << "landmarks: iter " << iter << "; cur " << currFrameIdx << "; prev " << prevFrameIdx << "; corresps " << countNonZero(corresps != -1) << std::endl;
+                std::cout << "landmarks: iter " << iter << "; cur " << currFrameIdx << "; prev " << prevFrameIdx << "; corresps " << correspsCount << std::endl;
 
                 // poses and edges for points3d
                 for(int v0 = 0; v0 < corresps.rows; v0++)
@@ -454,9 +399,6 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                 continue;
 
             Mat curToPrevRt = refinedPoses[prevFrameIdx].inv(DECOMP_SVD) * refinedPoses[currFrameIdx];
-            Mat transformedPrevNormals;
-            perspectiveTransform(frames[prevFrameIdx]->pyramidNormals[0], transformedPrevNormals,
-                                 curToPrevRt.inv(DECOMP_SVD));
             Mat corresps;
             computeCorrespsFiltered(cameraMatrix_64F, cameraMatrix_inv_64F, curToPrevRt.inv(DECOMP_SVD),
                                     frames[currFrameIdx]->depth,
@@ -465,9 +407,10 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
                                     frames[prevFrameIdx]->pyramidNormalsMask[0],
                                     0.003, corresps,
                                     frames[currFrameIdx]->pyramidNormals[0],
-                                    transformedPrevNormals,
+                                    frames[prevFrameIdx]->pyramidNormals[0],
                                     frames[currFrameIdx]->image,
-                                    frames[prevFrameIdx]->image);
+                                    frames[prevFrameIdx]->image,
+                                    maxColorDiff);
 
             for(int v0 = 0; v0 < corresps.rows; v0++)
             {
