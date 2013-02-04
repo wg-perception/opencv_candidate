@@ -227,7 +227,7 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     if(isShowStepResults)
     {
         cout << "Frame-to-frame odometry result" << endl;
-        genModel(trajectoryFrames->frames, trajectoryFrames->poses, cameraMatrix)->show(voxelSize);
+        ObjectModel(trajectoryFrames->frames, trajectoryFrames->poses, cameraMatrix).show(voxelSize, true);
     }
 
     vector<Mat> refinedPosesSE3;
@@ -237,7 +237,7 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     if(isShowStepResults)
     {
         cout << "Result of the loop closure" << endl;
-        genModel(trajectoryFrames->frames, refinedPosesSE3, cameraMatrix, frameIndices)->show(voxelSize);
+        ObjectModel(trajectoryFrames->frames, refinedPosesSE3, cameraMatrix, frameIndices).show(voxelSize, true);
     }
 
     // fill posesLinks with empty Rt because we want that they will be recomputed
@@ -263,7 +263,7 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     if(isShowStepResults)
     {
         cout << "Result of RgbdICP for camera poses" << endl;
-        genModel(trajectoryFrames->frames, refinedPosesSE3RgbdICP, cameraMatrix, frameIndices)->show(/*voxelSize*/);
+        ObjectModel(trajectoryFrames->frames, refinedPosesSE3RgbdICP, cameraMatrix, frameIndices).show(0.001, true);
     }
 
     vector<Ptr<RgbdFrame> > objectFrames; // with mask for object points only,
@@ -282,248 +282,11 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     refineGraphSE3RgbdICPModel(objectFrames, refinedPosesSE3RgbdICP,
                                keyframePosesLinks, cameraMatrix, refinedSE3ICPSE3ModelPoses, frameIndices);
 
-    model = genModel(objectFrames, refinedSE3ICPSE3ModelPoses, cameraMatrix, frameIndices);
+    model = new ObjectModel(objectFrames, refinedSE3ICPSE3ModelPoses, cameraMatrix, frameIndices);
 
     if(isShowStepResults)
     {
         cout << "Result of RgbdICP  for camera poses and model points refinement" << endl;
-        model->show();
+        model->show(0.001, true);
     }
 }
-
-#if 1
-Ptr<ObjectModel> ModelReconstructor::genModel(const std::vector<Ptr<RgbdFrame> >& frames,
-                                              const std::vector<cv::Mat>& poses, const Mat& cameraMatrix, const std::vector<int>& frameIndices)
-{
-    CV_Assert(frames.size() == poses.size());
-
-    Ptr<ObjectModel> model = new ObjectModel();
-
-    cout << "Convert frames to model" << endl;
-    size_t usedFrameCount = frameIndices.empty() ? frames.size() : frameIndices.size();
-    for(size_t i = 0; i < usedFrameCount; i++)
-    {
-        int  frameIndex = frameIndices.empty() ? i : frameIndices[i];
-        CV_Assert(frameIndex < static_cast<int>(frames.size()) && frameIndex >= 0);
-
-        const Ptr<RgbdFrame>& frame = frames[frameIndex];
-
-        CV_Assert(!frame->image.empty());
-        CV_Assert(frame->depth.size() == frame->image.size());
-        CV_Assert(frame->mask.size() == frame->image.size());
-        CV_Assert(frame->normals.empty() || frame->normals.size() == frame->image.size());
-
-        const int maskElemCount = countNonZero(frame->mask);
-        model->colors.reserve(model->colors.size() + maskElemCount);
-        model->points3d.reserve(model->points3d.size() + maskElemCount);
-        if(!frame->normals.empty())
-            model->normals.reserve(model->normals.size() + maskElemCount);
-
-        Mat cloud;
-        depthTo3d(frame->depth, cameraMatrix, cloud);
-        Mat transfPoints3d;
-        perspectiveTransform(cloud.reshape(3,1), transfPoints3d, poses[frameIndex]);
-        transfPoints3d = transfPoints3d.reshape(3, cloud.rows);
-
-        Mat transfNormals;
-        if(!frame->normals.empty())
-        {
-            perspectiveTransform(frame->normals.reshape(3,1), transfNormals, poses[frameIndex]);
-            transfNormals = transfNormals.reshape(3, frame->normals.rows);
-        }
-
-        for(int y = 0, pointIndex = 0; y < frame->mask.rows; y++)
-        {
-            const uchar* maskRow = frame->mask.ptr<uchar>(y);
-            for(int x = 0; x < frame->mask.cols; x++, pointIndex++)
-            {
-                if(maskRow[x] && isValidDepth(frame->depth.at<float>(y,x)))
-                {
-                    model->colors.push_back(frame->image.at<Vec3b>(y,x));
-                    model->points3d.push_back(transfPoints3d.at<Point3f>(y,x));
-                    if(!frame->normals.empty())
-                    {
-                        Point3f n = transfNormals.at<Point3f>(y,x);
-                        n *= 1./cv::norm(n);
-                        model->normals.push_back(n);
-                    }
-                }
-            }
-        }
-        CV_Assert(model->colors.size() == model->points3d.size());
-        CV_Assert(model->normals.empty() || model->normals.size() == model->points3d.size());
-    }
-
-    return model;
-}
-
-#else
-
-template<class T>
-void voxelFilter(pcl::PointCloud<T>& cloud, double gridSize)
-{
-    if(gridSize > 0.f)
-    {
-        typename pcl::PointCloud<T>::ConstPtr cloudPtr = boost::make_shared<const pcl::PointCloud<T> >(cloud);
-        pcl::PointCloud<T> cloudDownsampled;
-        pcl::VoxelGrid<T> voxelGridFilter;
-        voxelGridFilter.setLeafSize(gridSize, gridSize, gridSize);
-        voxelGridFilter.setDownsampleAllData(true);
-        voxelGridFilter.setInputCloud(cloudPtr);
-        voxelGridFilter.filter(cloudDownsampled);
-        cloudDownsampled.swap(cloud);
-    }
-}
-
-Ptr<ObjectModel> ModelReconstructor::genModel(const std::vector<Ptr<RgbdFrame> >& frames,
-                                              const std::vector<cv::Mat>& poses, const Mat& cameraMatrix, const std::vector<int>& frameIndices)
-{
-    CV_Assert(frames.size() == poses.size());
-
-    Ptr<ObjectModel> model = new ObjectModel();
-
-    size_t usedFrameCount = frameIndices.empty() ? frames.size() : frameIndices.size();
-
-    cout << "Convert frames to model" << endl;
-
-    pcl::PointCloud<pcl::PointXYZINormal> totalCloud;
-    for(size_t i = 0; i < usedFrameCount; i++)
-    {
-        int  frameIndex = frameIndices.empty() ? i : frameIndices[i];
-        CV_Assert(frameIndex < static_cast<int>(frames.size()) && frameIndex >= 0);
-
-        const Ptr<RgbdFrame>& frame = frames[frameIndex];
-
-        CV_Assert(!frame->image.empty());
-        CV_Assert(frame->depth.size() == frame->image.size());
-        CV_Assert(frame->mask.size() == frame->image.size());
-        CV_Assert(frame->normals.empty() || frame->normals.size() == frame->image.size());
-
-        Mat cloud;
-        depthTo3d(frame->depth, cameraMatrix, cloud);
-        Mat transfPoints3d;
-        perspectiveTransform(cloud.reshape(3,1), transfPoints3d, poses[frameIndex]);
-        transfPoints3d = transfPoints3d.reshape(3, cloud.rows);
-
-        Mat transfNormals;
-        CV_Assert(!frame->normals.empty());
-        perspectiveTransform(frame->normals.reshape(3,1), transfNormals, poses[frameIndex]);
-        transfNormals = transfNormals.reshape(3, frame->normals.rows);
-
-        for(int y = 0; y < frame->mask.rows; y++)
-        {
-            const uchar* maskRow = frame->mask.ptr<uchar>(y);
-            for(int x = 0; x < frame->mask.cols; x++)
-            {
-                if(maskRow[x] && isValidDepth(frame->depth.at<float>(y,x)))
-                {
-                    Point3f coord = transfPoints3d.at<Point3f>(y,x);
-
-                    pcl::PointXYZINormal p;
-                    p.x = coord.x; p.y = coord.y; p.z = coord.z;
-
-                    if(!frame->normals.empty())
-                    {
-                        Point3f n = transfNormals.at<Point3f>(y,x);
-                        n *= 1./cv::norm(n);
-
-                        p.normal_x = n.x; p.normal_y = n.y; p.normal_z = n.z;
-                    }
-                    else
-                        p.normal_x = p.normal_y = p.normal_z = 0;
-
-                    totalCloud.push_back(p);
-                }
-            }
-        }
-    }
-
-    const double gridSize = 0.0005;
-    voxelFilter(totalCloud, gridSize);
-
-    model->colors.resize(totalCloud.size());
-    model->points3d.resize(totalCloud.size());
-    model->normals.resize(totalCloud.size());
-
-    // save points and normals
-    for(size_t i = 0; i < totalCloud.points.size(); i++)
-    {
-        const pcl::PointXYZINormal& p = totalCloud.points[i];
-        model->points3d[i] = Point3f(p.x, p.y, p.z);
-        model->normals[i] = Point3f(p.normal_x, p.normal_y, p.normal_z);
-    }
-
-    // color
-    vector<Vec3d> colorSum(model->points3d.size(), Vec3d(0,0,0));
-    vector<double> wSum(model->points3d.size(), 0);
-
-    for(size_t i = 0; i < usedFrameCount; i++)
-    {
-        int  frameIndex = frameIndices.empty() ? i : frameIndices[i];
-        CV_Assert(frameIndex < static_cast<int>(frames.size()) && frameIndex >= 0);
-
-        const Ptr<RgbdFrame>& frame = frames[frameIndex];
-
-        const Mat cameraPose = poses[frameIndex];
-        Point3f cameraPoint;
-        CV_Assert(cameraPose.type() == CV_64FC1);
-        cameraPoint.x = cameraPose.at<double>(0,3);
-        cameraPoint.y = cameraPose.at<double>(1,3);
-        cameraPoint.z = cameraPose.at<double>(2,3);
-
-        Mat zBuffer(frame->image.size(), CV_32FC1, FLT_MAX);
-        Mat zIndex(frame->image.size(), CV_32SC1, -1);
-
-        vector<Point3f> points3d;
-        perspectiveTransform(model->points3d, points3d, poses[frameIndex].inv(DECOMP_SVD));
-
-        vector<Point2f> points2d;
-        projectPoints(points3d, Mat::eye(3, 3, CV_64FC1), Mat::zeros(3, 1, CV_64FC1), cameraMatrix, Mat(), points2d);
-
-        Rect r(0, 0, zBuffer.cols, zBuffer.rows);
-
-        for(size_t pi = 0; pi < points3d.size(); pi++)
-        {
-            const Point3f& p3 = points3d[pi];
-            Point p2(cvRound(points2d[pi].x), cvRound(points2d[pi].y));
-
-            if(p3.z <= 0 || !r.contains(p2) || p3.z >= zBuffer.at<float>(p2.y, p2.x))
-                continue;
-
-            zBuffer.at<float>(p2.y, p2.x) = p3.z;
-            zIndex.at<int>(p2.y, p2.x) = static_cast<int>(pi);
-        }
-
-        for(int y = 0; y < zIndex.rows; y++)
-        {
-            for(int x = 0; x < zIndex.cols; x++)
-            {
-                int pointIndex = zIndex.at<int>(y, x);
-
-                if(pointIndex < 0)
-                    continue;
-
-                double polarCos = model->normals[pointIndex].ddot(cameraPoint - model->points3d[pointIndex]);
-                double w = std::abs(polarCos);
-
-                colorSum[pointIndex] += w * frame->image.at<Vec3b>(y,x);
-                wSum[pointIndex] += w;
-            }
-        }
-    }
-
-    for(size_t i = 0; i < colorSum.size(); i++)
-    {
-        if(wSum[i] > FLT_EPSILON)
-        {
-            Vec3b color = colorSum[i] / wSum[i];
-            model->colors[i] = color;
-        }
-        // TODO remove points with zero wSum
-    }
-
-    CV_Assert(model->points3d.size() == model->colors.size());
-
-    return model;
-}
-#endif

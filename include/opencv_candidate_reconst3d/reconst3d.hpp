@@ -289,16 +289,24 @@ class ObjectModel
 {
 public:
     ObjectModel();
+    ObjectModel(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& poses,
+                const cv::Mat& cameraMatrix, const std::vector<int>& frameIndices=std::vector<int>());
+    void create(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& poses,
+                const cv::Mat& cameraMatrix, const std::vector<int>& frameIndices=std::vector<int>());
+
     void clear();
 
     void read_ply(const std::string& filename);
     void write_ply(const std::string& filename) const;
 
-    void show(float gridSize=0.001f, int normalLevel=0) const;
+    void show(float gridSize=0.001f, bool withCameraPoses=false, int normalLevel=0) const;
 
     std::vector<cv::Vec3b> colors;
     std::vector<cv::Point3f> points3d;
     std::vector<cv::Point3f> normals;
+
+    // TODO: poses should not be here?
+    std::vector<cv::Mat> cameraPoses;
 };
 
 class ModelReconstructor : public cv::Algorithm
@@ -309,9 +317,6 @@ public:
 
     void reconstruct(const cv::Ptr<TrajectoryFrames>& trajectoryFrames, const cv::Mat& cameraMatrix, cv::Ptr<ObjectModel>& model) const;
 
-    static cv::Ptr<ObjectModel> genModel(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& poses,
-                                         const cv::Mat& cameraMatrix, const std::vector<int>& frameIndices=std::vector<int>());
-    
     cv::AlgorithmInfo*
     info() const;
 
