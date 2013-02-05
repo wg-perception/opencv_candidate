@@ -298,8 +298,6 @@ ArbitraryCaptureServer::FramePushOutput ArbitraryCaptureServer::push(const cv::M
 
             morphologyEx(warpedMask, warpedMask, MORPH_CLOSE, Mat(), Point(-1,-1), 7);
 
-            imshow("warpedMask", warpedMask);
-            waitKey();
             int area = countNonZero(warpedMask);
             double areaPart = tableMasker->get<double>("minTablePart");
             if(area < image.total() * areaPart)
