@@ -2,8 +2,10 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include <opencv_candidate_reconst3d/reconst3d.hpp>
+#include <iomanip>
 
 using namespace std;
 using namespace cv;
@@ -73,6 +75,124 @@ void TrajectoryFrames::clear()
     frameStates.clear();
     keyframePosesLinks.clear();
 }
+
+void TrajectoryFrames::save(const std::string& dirname) const
+{
+    cout << "TrajectoryFrames::save" << endl;
+    for(size_t i = 0; i < frames.size(); i++)
+    {
+        const Ptr<RgbdFrame> frame = frames[i];
+
+        stringstream imageIndex;
+        imageIndex << setfill('0') << setw(5) << frame->ID;
+
+        imwrite(dirname + "/image_" + imageIndex.str() + ".png", frame->image);
+        Mat depth;
+        frame->depth.convertTo(depth, CV_16UC1, 1000);
+        imwrite(dirname + "/depth_" + imageIndex.str() + ".png", depth);
+        imwrite(dirname + "/mask_" + imageIndex.str() + ".png", frame->mask);
+        {
+            FileStorage fs(dirname + "/normals_" + imageIndex.str() + ".xml.gz", FileStorage::WRITE);
+            CV_Assert(fs.isOpened());
+            fs << "normals" << frame->normals;
+        }
+
+        imwrite(dirname + "/object_mask_" + imageIndex.str() + ".png", objectMasks[i]);
+        {
+            FileStorage fs(dirname + "/pose" + imageIndex.str() + ".xml.gz", FileStorage::WRITE);
+            CV_Assert(fs.isOpened());
+            fs << "pose" << poses[i];
+        }
+    }
+
+    FileStorage fs(dirname + "/poseLinks.xml.gz", FileStorage::WRITE);
+    CV_Assert(fs.isOpened());
+    fs << "poseLinks" << "[";
+    for(size_t i = 0; i < keyframePosesLinks.size(); i++)
+    {
+        const PosesLink& link = keyframePosesLinks[i];
+        fs << "{";
+        fs << "srcIndex" << link.srcIndex;
+        fs << "dstIndex" << link.dstIndex;
+        fs << "Rt" << link.Rt;
+        fs << "}";
+    }
+    fs << "]";
+}
+
+void TrajectoryFrames::load(const std::string& dirname)
+{
+    cout << "TrajectoryFrames::load" << endl;
+
+    clear();
+
+    vector<string> frameIndices;
+    readFrameIndices(dirname, frameIndices);
+    if(frameIndices.empty())
+    {
+        cout << "Can not load the data from given directory of the base: " << dirname << endl;
+        return;
+    }
+
+    for(size_t i = 0; i < frameIndices.size(); i++)
+    {
+        Mat image, depth;
+        loadFrameData(dirname, frameIndices[i], image, depth);
+        CV_Assert(!image.empty());
+        CV_Assert(!depth.empty());
+
+        Mat mask, objectMask;
+        mask = imread(dirname + "/mask_" + frameIndices[i] + ".png", 0);
+        objectMask = imread(dirname + "/object_mask_" + frameIndices[i] + ".png", 0);
+        CV_Assert(!mask.empty());
+        CV_Assert(!objectMask.empty());
+
+        Mat normals;
+        {
+            FileStorage fs(dirname + "/normals_" + frameIndices[i] + ".xml.gz", FileStorage::READ);
+            CV_Assert(fs.isOpened());
+            fs["normals"] >> normals;
+            CV_Assert(!normals.empty());
+        }
+
+        Mat pose;
+        {
+            FileStorage fs(dirname + "/pose" + frameIndices[i] + ".xml.gz", FileStorage::READ);
+            CV_Assert(fs.isOpened());
+            fs["pose"] >> pose;
+            CV_Assert(!pose.empty());
+        }
+
+        Ptr<RgbdFrame> frame = new RgbdFrame(image, depth, mask, normals, atoi(frameIndices[i].c_str()));
+
+        frames.push_back(frame);
+
+        objectMasks.push_back(objectMask);
+
+        poses.push_back(pose);
+    }
+
+    resumeFrameState = TrajectoryFrames::KEYFRAME;
+    frameStates.resize(frames.size(), TrajectoryFrames::KEYFRAME);
+
+    FileStorage fs(dirname + "/poseLinks.xml.gz", FileStorage::READ);
+    CV_Assert(fs.isOpened());
+    FileNode fn = fs["poseLinks"];
+    FileNodeIterator fnIt = fn.begin(), fnEnd = fn.end();
+    for(; fnIt != fnEnd; ++fnIt)
+    {
+        int srcIndex = -1, dstIndex = -1;
+        Mat Rt;
+        (*fnIt)["srcIndex"] >> srcIndex;
+        (*fnIt)["dstIndex"] >> dstIndex;
+        (*fnIt)["Rt"] >> Rt;
+        CV_Assert(srcIndex >= 0);
+        CV_Assert(dstIndex >= 0);
+        keyframePosesLinks.push_back(PosesLink(srcIndex, dstIndex, Rt));
+    }
+}
+
+////////////////////////
 
 CircularCaptureServer::FramePushOutput::FramePushOutput()
     : frameState(0)

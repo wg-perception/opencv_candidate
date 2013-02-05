@@ -72,6 +72,9 @@ struct TrajectoryFrames
               const cv::Mat& objectMask, int state);
     void clear();
 
+    void save(const std::string& filename) const;
+    void load(const std::string& filename);
+
     int resumeFrameState;
     std::vector<cv::Ptr<cv::RgbdFrame> > frames;
     std::vector<int> frameStates;

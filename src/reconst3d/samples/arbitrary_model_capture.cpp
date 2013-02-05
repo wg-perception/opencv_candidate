@@ -28,9 +28,11 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    Mat cameraMatrix = defaultCameraMatrix();
+
     // Load the data
     const string dirname = argv[1];
-
+#if 1
     vector<string> frameIndices;
     readFrameIndices(dirname, frameIndices);
     if(frameIndices.empty())
@@ -40,8 +42,6 @@ int main(int argc, char** argv)
     }
 
     cout << "Frame indices count " << frameIndices.size() << endl;
-
-    Mat cameraMatrix = defaultCameraMatrix();
 
     Ptr<ArbitraryCaptureServer> captureServer = new ArbitraryCaptureServer();
     captureServer->set("cameraMatrix", cameraMatrix);
@@ -62,6 +62,15 @@ int main(int argc, char** argv)
 
     if(trajectoryFrames.empty())
         return -1;
+#if 0
+    trajectoryFrames->save("trajectoryFrames/");
+    return 0;
+#endif
+
+#else
+    Ptr<TrajectoryFrames> trajectoryFrames = new TrajectoryFrames();
+    trajectoryFrames->load(dirname);
+#endif
 
     ModelReconstructor reconstructor;
     reconstructor.set("isShowStepResults", true);
