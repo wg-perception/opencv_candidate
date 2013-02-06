@@ -134,6 +134,11 @@ void TrajectoryFrames::load(const std::string& dirname)
         return;
     }
 
+    frames.resize(frameIndices.size());
+    objectMasks.resize(frameIndices.size());
+    poses.resize(frameIndices.size());
+
+#pragma omp parallel for
     for(size_t i = 0; i < frameIndices.size(); i++)
     {
         Mat image, depth;
@@ -165,11 +170,9 @@ void TrajectoryFrames::load(const std::string& dirname)
 
         Ptr<RgbdFrame> frame = new RgbdFrame(image, depth, mask, normals, atoi(frameIndices[i].c_str()));
 
-        frames.push_back(frame);
-
-        objectMasks.push_back(objectMask);
-
-        poses.push_back(pose);
+        frames[i] = frame;
+        objectMasks[i] = objectMask;
+        poses[i] = pose;
     }
 
     resumeFrameState = TrajectoryFrames::KEYFRAME;
