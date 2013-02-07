@@ -261,8 +261,9 @@ protected:
     };
 
     cv::Ptr<TrajectorySegment> getActiveSegment() const;
-    void estimateFeatures2dEdges(const std::vector<cv::KeyPoint>& srcKeypoints, const cv::Mat& srcDescriptors, const cv::Mat& cloud,
-                                 std::vector<Feature2dEdge>& edges, const cv::Mat& srcImage=cv::Mat()) const;
+    void estimateFeatures2dEdges(int srcSegmentIndex, int srcFrameIndex,
+                                 const std::vector<cv::KeyPoint>& srcKeypoints, const cv::Mat& srcDescriptors, const cv::Mat& srcCloud,
+                                 std::vector<Feature2dEdge>& edges) const;
     void finalizeLastSegment();
     cv::Ptr<TrajectorySegment> createNewSegment();
 

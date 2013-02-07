@@ -115,8 +115,9 @@ Ptr<ArbitraryCaptureServer::TrajectorySegment> ArbitraryCaptureServer::getActive
     return lastSegment;
 }
 
-void ArbitraryCaptureServer::estimateFeatures2dEdges(const vector<KeyPoint>& srcKeypoints, const Mat& srcDescriptors, const Mat& srcCloud,
-                                               std::vector<Feature2dEdge>& edges, const cv::Mat& srcImage) const
+void ArbitraryCaptureServer::estimateFeatures2dEdges(int srcSegmentIndex, int srcFrameIndex,
+                                                     const vector<KeyPoint>& srcKeypoints, const Mat& srcDescriptors, const Mat& srcCloud,
+                                                     std::vector<Feature2dEdge>& edges) const
 {
     edges.clear();
     for(size_t segmentIndex = 0; segmentIndex < trajectorySegments.size(); segmentIndex++)
@@ -135,7 +136,7 @@ void ArbitraryCaptureServer::estimateFeatures2dEdges(const vector<KeyPoint>& src
             continue;
 
         if(!Rt.empty())
-            edges.push_back(Feature2dEdge(-1, -1, segmentIndex,
+            edges.push_back(Feature2dEdge(srcSegmentIndex, srcFrameIndex, segmentIndex,
                                           representFrameIndex, matches.size(), Rt));
     }
 }
@@ -268,7 +269,8 @@ ArbitraryCaptureServer::FramePushOutput ArbitraryCaptureServer::push(const cv::M
         Mat descriptors;
         (*featureComputer)(grayImage, Mat(), keypoints, descriptors);
 
-        estimateFeatures2dEdges(keypoints, descriptors, cloud, edges, grayImage);
+        estimateFeatures2dEdges(trajectorySegments.size(), 0,
+                                keypoints, descriptors, cloud, edges);
 
         if(edges.empty())
         {
@@ -363,7 +365,9 @@ ArbitraryCaptureServer::FramePushOutput ArbitraryCaptureServer::push(const cv::M
         if(!edges.empty())
         {
             // it's the beggining of a new segment and we already estimated transformations from features2d
-            Mat dstPose = trajectorySegments[edges[bestEdgeIndex].dstSegmentIndex]->poses[edges[bestEdgeIndex].dstFrameIndex];
+            int dstSegmentIndex = edges[bestEdgeIndex].dstSegmentIndex;
+
+            Mat dstPose = trajectorySegments[dstSegmentIndex]->poses[dstSegmentIndex];
             pose = dstPose * edges[bestEdgeIndex].Rt;
         }
         else
@@ -415,6 +419,11 @@ ArbitraryCaptureServer::FramePushOutput ArbitraryCaptureServer::push(const cv::M
         segment->push(currFrame, pose, objectMask, tableMask, planeCoeffs, image);
         count++;
         cout << "Keyframes count " << count << std::endl;
+    }
+
+    if(bestEdgeIndex >= 0)
+    {
+        feature2dEdges.push_back(edges[bestEdgeIndex]);
     }
 
     segment->lastFrame = currFrame;
