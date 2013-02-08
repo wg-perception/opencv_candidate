@@ -139,7 +139,6 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
         frames[i] = fr;
     }
 
-    const double maxDepthDiff = 0.002;
     for(size_t i = 0; i < frames.size(); i++)
     {
         frames[i]->releasePyramids();
@@ -152,6 +151,8 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
 
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
+    const double maxDepthDiff = 0.07;
+
     for(int iter = 0; iter < iterCount; iter++)
     {
         G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
