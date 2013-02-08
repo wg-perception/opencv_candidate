@@ -332,6 +332,9 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
     const double maxNormalsDiff = 30; // in degrees
     const double maxNormalAngleDev = 75; // in degrees
 
+    const double cosMaxNormalsDiff = std::cos(maxNormalAngleDev / 180 * CV_PI);
+    const double cosMaxNormalAngleDev = std::cos(maxNormalsDiff / 180 * CV_PI);
+
     computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
                     maxDepthDiff, corresps);
 
@@ -349,7 +352,7 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
             {
                 Point3f n0 = normals0.at<Point3f>(v0,u0);
                 n0 *= 1./cv::norm(n0);
-                if(std::abs(n0.ddot(Oz_inv)) < std::cos(maxNormalAngleDev / 180 * CV_PI))
+                if(n0.ddot(Oz_inv) < cosMaxNormalsDiff)
                 {
                     corresps.at<int>(v0, u0) = -1;
                     continue;
@@ -365,7 +368,7 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
                 tn1.z = n1.x * Rt_ptr[8] + n1.y * Rt_ptr[9] + n1.z * Rt_ptr[10] + Rt_ptr[11];
                 tn1 *= 1./cv::norm(tn1);
 
-                if(std::abs(n0.ddot(tn1)) < std::cos(maxNormalsDiff / 180 * CV_PI))
+                if(n0.ddot(tn1) < cosMaxNormalAngleDev)
                 {
                     corresps.at<int>(v0, u0) = -1;
                     continue;
