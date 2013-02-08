@@ -176,10 +176,12 @@ void refineGraphSE3Segment(const std::vector<cv::Mat>& odometryPoses,
 
 
 // Graph with 2 types of edges: odometry and Rgbd+ICP for correspondences.
+// TODO we need next iteration of the code refactoring
 void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, int pyramidLevel,
                          const std::vector<cv::Ptr<cv::OdometryFrame> >& frames,
                          const std::vector<cv::Mat>& poses, const std::vector<PosesLink>& posesLinks, const cv::Mat& cameraMatrix,
-                         std::vector<int>& frameIndices);
+                         std::vector<int>& frameIndices, 
+                         double maxTranslation, double maxRotation, double maxDepthDiff);
 
 // Refine camera poses by graph with odometry edges and Rgbd+ICP edges
 void refineGraphSE3RgbdICP(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames,

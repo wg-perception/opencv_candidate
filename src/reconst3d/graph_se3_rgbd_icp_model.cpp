@@ -152,7 +152,6 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
     const double maxDepthDiff = 0.07;
-
     for(int iter = 0; iter < iterCount; iter++)
     {
         G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
@@ -160,7 +159,8 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
         g2o::OptimizationAlgorithm* nonLinerSolver = createNonLinearSolver(DEFAULT_NON_LINEAR_SOLVER_TYPE, blockSolver);
         g2o::SparseOptimizer* optimizer = createOptimizer(nonLinerSolver);
 
-        fillGraphSE3RgbdICP(optimizer, 0, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices);
+        fillGraphSE3RgbdICP(optimizer, 0, frames, refinedPoses, posesLinks, cameraMatrix_64F, frameIndices,
+                            maxTranslation, maxRotation, maxDepthDiff);
 
         vector<Mat> vertexIndices(frameIndices.size());
         int vertexIdx = frames.size();
