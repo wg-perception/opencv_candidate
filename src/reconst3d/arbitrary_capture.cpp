@@ -365,9 +365,7 @@ ArbitraryCaptureServer::FramePushOutput ArbitraryCaptureServer::push(const cv::M
         if(!edges.empty())
         {
             // it's the beggining of a new segment and we already estimated transformations from features2d
-            int dstSegmentIndex = edges[bestEdgeIndex].dstSegmentIndex;
-
-            Mat dstPose = trajectorySegments[dstSegmentIndex]->poses[dstSegmentIndex];
+            Mat dstPose = trajectorySegments[edges[bestEdgeIndex].dstSegmentIndex]->poses[edges[bestEdgeIndex].dstFrameIndex];
             pose = dstPose * edges[bestEdgeIndex].Rt;
         }
         else
