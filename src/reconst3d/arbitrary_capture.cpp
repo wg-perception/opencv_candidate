@@ -153,7 +153,22 @@ void ArbitraryCaptureServer::finalizeLastSegment()
     if(static_cast<int>(segment->frames.size()) < minSegmentFramesCount)
     {
         // clear the last segment
-        trajectorySegments.resize(trajectorySegments.size() - 1);
+        int segmentIndex = static_cast<int>(trajectorySegments.size()) - 1;
+
+        trajectorySegments.resize(segmentIndex);
+
+        std::vector<Feature2dEdge>::const_reverse_iterator it = feature2dEdges.rbegin(), rend = feature2dEdges.rend();
+        int segmentEdgesCount = 0;
+        for(; it != rend; ++it)
+        {
+            if(it->srcSegmentIndex == segmentIndex)
+                segmentEdgesCount++;
+            else
+                break;
+        }
+        CV_Assert(segmentEdgesCount <= 1); // for the current approach
+
+        feature2dEdges.resize(feature2dEdges.size() - segmentEdgesCount);
     }
 
     if(trajectorySegments.empty() && prevTableMask.empty())
