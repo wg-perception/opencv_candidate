@@ -220,7 +220,8 @@ namespace cv
    * @param depth the depth image (if given as short int CV_U, it is assumed to be the depth in millimeters
    *              (as done with the Microsoft Kinect), otherwise, if given as CV_32F, it is assumed in meters)
    * @param K The calibration matrix
-   * @param points3d the resulting 3d points as a cv::Mat of the same size but containing cv::Vec3f
+   * @param points3d the resulting 3d points. They are of depth the same as `depth` if it is CV_32F or CV_64F, and the
+   *        depth of `K` if `depth` is of depth CV_U
    * @param mask the mask of the points to consider (can be empty)
    */
   void

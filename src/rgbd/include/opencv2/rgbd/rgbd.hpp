@@ -246,9 +246,10 @@ namespace cv
   /** Converts a depth image to an organized set of 3d points.
    * The coordinate system is x pointing left, y down and z away from the camera
    * @param depth the depth image (if given as short int CV_U, it is assumed to be the depth in millimeters
-   *              (as done with the Microsoft Kinect), otherwise, if given as CV_32F, it is assumed in meters)
+   *              (as done with the Microsoft Kinect), otherwise, if given as CV_32F or CV_64F, it is assumed in meters)
    * @param K The calibration matrix
-   * @param points3d the resulting 3d points
+   * @param points3d the resulting 3d points. They are of depth the same as `depth` if it is CV_32F or CV_64F, and the
+   *        depth of `K` if `depth` is of depth CV_U
    * @param mask the mask of the points to consider (can be empty)
    */
   CV_EXPORTS
