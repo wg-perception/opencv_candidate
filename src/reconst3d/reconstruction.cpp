@@ -49,7 +49,8 @@ void filterFramesByViewHist(vector<Ptr<RgbdFrame> >& frames,
 
             Mat tcloud, tnormals;
             perspectiveTransform(cloud.reshape(3,1), tcloud, poses[frameIndex]);
-            perspectiveTransform(frames[frameIndex]->normals.reshape(3,1), tnormals, poses[frameIndex]);
+            Mat R = poses[frameIndex](Rect(0,0,3,3));
+            transform(frames[frameIndex]->normals.reshape(3,1), tnormals, R);
 
             cloud = tcloud.reshape(3, frames[frameIndex]->depth.rows);
             normals = tnormals.reshape(3, frames[frameIndex]->depth.rows);
@@ -67,12 +68,9 @@ void filterFramesByViewHist(vector<Ptr<RgbdFrame> >& frames,
                 const Point3f& p = cloud.at<Point3f>(y,x);
                 CV_Assert(normals.type() == CV_32FC3);
                 Point3f n = normals.at<Point3f>(y,x);
-                n *= 1./cv::norm(n);
 
                 if(isValidDepth(p.z) && mask.at<uchar>(y,x))
                 {
-                    //CV_Assert(cv::norm(n) > 0.98);
-
                     transformedPoints3d.push_back(p);
                     transformedNormals.push_back(n);
                     pointFrameIndices.push_back(Vec3i(frameIndex, -1, -1));

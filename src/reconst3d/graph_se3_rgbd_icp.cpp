@@ -351,7 +351,6 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
             if(c != -1)
             {
                 Point3f n0 = normals0.at<Point3f>(v0,u0);
-                n0 *= 1./cv::norm(n0);
                 if(n0.ddot(Oz_inv) < cosMaxNormalsDiff)
                 {
                     corresps.at<int>(v0, u0) = -1;

@@ -135,7 +135,8 @@ void ObjectModel::create(const vector<Ptr<RgbdFrame> >& frames, const vector<Mat
         Mat transfNormals;
         if(!frame->normals.empty())
         {
-            perspectiveTransform(frame->normals.reshape(3,1), transfNormals, poses[frameIndex]);
+            const Mat R = poses[frameIndex](Rect(0,0,3,3));
+            transform(frame->normals.reshape(3,1), transfNormals, R);
             transfNormals = transfNormals.reshape(3, frame->normals.rows);
         }
 
@@ -151,7 +152,6 @@ void ObjectModel::create(const vector<Ptr<RgbdFrame> >& frames, const vector<Mat
                     if(!frame->normals.empty())
                     {
                         Point3f n = transfNormals.at<Point3f>(y,x);
-                        n *= 1./cv::norm(n);
                         normals.push_back(n);
                     }
                 }

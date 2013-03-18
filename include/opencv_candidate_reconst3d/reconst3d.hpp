@@ -12,6 +12,39 @@ void loadFrameData(const std::string& dirname, const std::string& frameIndex, cv
 void loadTODLikeBase(const std::string& dirname, std::vector<cv::Mat>& bgrImages,
                      std::vector<cv::Mat>& depthes32F, std::vector<std::string>* imageFilenames=0);
 
+// TODO remove the following functions from reconst3d API
+inline
+cv::Point3f rotatePoint(const cv::Point3f& point, const cv::Mat& Rt)
+{
+    CV_Assert(Rt.type() == CV_64FC1);
+    const double * Rt_ptr = Rt.ptr<double>();
+
+    cv::Point3f rotatedPoint;
+    rotatedPoint.x = point.x * Rt_ptr[0] + point.y * Rt_ptr[1] + point.z * Rt_ptr[2];
+    rotatedPoint.y = point.x * Rt_ptr[4] + point.y * Rt_ptr[5] + point.z * Rt_ptr[6];
+    rotatedPoint.z = point.x * Rt_ptr[8] + point.y * Rt_ptr[9] + point.z * Rt_ptr[10];
+    return rotatedPoint;
+}
+
+inline
+cv::Point3f translatePoint(const cv::Point3f& point, const cv::Mat& Rt)
+{
+    CV_Assert(Rt.type() == CV_64FC1);
+    const double * Rt_ptr = Rt.ptr<double>();
+
+    cv::Point3f translatedPoint;
+    translatedPoint.x = point.x + Rt_ptr[3];
+    translatedPoint.y = point.y + Rt_ptr[7];
+    translatedPoint.z = point.z + Rt_ptr[11];
+    return translatedPoint;
+}
+
+inline
+cv::Point3f transformPoint(const cv::Point3f& point, const cv::Mat& Rt)
+{
+    return translatePoint(rotatePoint(point, Rt), Rt);
+}
+
 // Find a table mask
 class TableMasker: public cv::Algorithm
 {
