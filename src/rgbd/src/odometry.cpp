@@ -1268,7 +1268,7 @@ Size ICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) co
 void ICPOdometry::checkParams() const
 {
     CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
-    CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
+    CV_Assert(cameraMatrix.size() == Size(3,3) && (cameraMatrix.type() == CV_32FC1 || cameraMatrix.type() == CV_64FC1));
 }
 
 bool ICPOdometry::computeImpl(const Ptr<OdometryFrame>& srcFrame, const Ptr<OdometryFrame>& dstFrame, Mat& Rt, const Mat& initRt) const
@@ -1383,7 +1383,7 @@ Size RgbdICPOdometry::prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType
 void RgbdICPOdometry::checkParams() const
 {
     CV_Assert(maxPointsPart > 0. && maxPointsPart <= 1.);
-    CV_Assert(cameraMatrix.size() == Size(3,3) && cameraMatrix.type() == CV_32FC1);
+    CV_Assert(cameraMatrix.size() == Size(3,3) && (cameraMatrix.type() == CV_32FC1 || cameraMatrix.type() == CV_64FC1));
     CV_Assert(minGradientMagnitudes.size() == iterCounts.size() || minGradientMagnitudes.size() == iterCounts.t().size());
 }
 
