@@ -329,17 +329,14 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
                             const Mat& image0, const Mat& image1,
                             float maxColorDiff)
 {
-    const double maxNormalsDiff = 30; // in degrees
+    const double maxNormalsDiff = 50; // in degrees
     const double maxNormalAngleDev = 75; // in degrees
 
-    const double cosMaxNormalsDiff = std::cos(maxNormalAngleDev / 180 * CV_PI);
-    const double cosMaxNormalAngleDev = std::cos(maxNormalsDiff / 180 * CV_PI);
+    const double cosMaxNormalsDiff = std::cos(maxNormalsDiff / 180 * CV_PI);
+    const double cosMaxNormalAngleDev = std::cos(maxNormalAngleDev / 180 * CV_PI);
 
     computeCorresps(K, K_inv, Rt, depth0, validMask0, depth1, selectMask1,
                     maxDepthDiff, corresps);
-
-    CV_Assert(Rt.type() == CV_64FC1);
-    const double * Rt_ptr = Rt.ptr<double>();
 
     int count = 0;
     const Point3f Oz_inv(0,0,-1); // TODO replace by vector to camera position?
@@ -351,7 +348,7 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
             if(c != -1)
             {
                 Point3f n0 = normals0.at<Point3f>(v0,u0);
-                if(n0.ddot(Oz_inv) < cosMaxNormalsDiff)
+                if(n0.ddot(Oz_inv) < cosMaxNormalAngleDev)
                 {
                     corresps.at<int>(v0, u0) = -1;
                     continue;
@@ -361,13 +358,9 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
                 get2shorts(c, u1, v1);
 
                 const Point3f& n1 = normals1.at<Point3f>(v1,u1);
-                Point3f tn1;
-                tn1.x = n1.x * Rt_ptr[0] + n1.y * Rt_ptr[1] + n1.z * Rt_ptr[2] + Rt_ptr[3];
-                tn1.y = n1.x * Rt_ptr[4] + n1.y * Rt_ptr[5] + n1.z * Rt_ptr[6] + Rt_ptr[7];
-                tn1.z = n1.x * Rt_ptr[8] + n1.y * Rt_ptr[9] + n1.z * Rt_ptr[10] + Rt_ptr[11];
-                tn1 *= 1./cv::norm(tn1);
+                Point3f tn1 = rotatePoint(n1, Rt);
 
-                if(n0.ddot(tn1) < cosMaxNormalAngleDev)
+                if(n0.ddot(tn1) < cosMaxNormalsDiff)
                 {
                     corresps.at<int>(v0, u0) = -1;
                     continue;
