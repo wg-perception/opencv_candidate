@@ -160,19 +160,20 @@ void refineGraphSE3Segment(const vector<Mat>& odometryPoses,
         int startIndex = sortedRefinedFrameIndices[ki-1];
         int endIndex = sortedRefinedFrameIndices[ki];
 
-        Mat basePose = partiallyRefinedPoses[startIndex].clone();
-
-        int lastValidIndex = startIndex + 1;
+        int basePoseIndex = startIndex;
+        Mat basePose = partiallyRefinedPoses[basePoseIndex];
         for(int fi = startIndex + 1; fi <= endIndex; fi++)
         {
-            if(odometryPoses[fi].empty() || odometryPoses[lastValidIndex].empty())
+            if(odometryPoses[fi].empty())
                 continue;
 
-            Mat deltaRt = odometryPoses[lastValidIndex].inv() * odometryPoses[fi];
-            rebasedPoses[fi] = basePose * deltaRt;
-            basePose = rebasedPoses[fi].clone();
+            CV_Assert(odometryPoses[basePoseIndex].empty());
 
-            lastValidIndex = fi;
+            Mat deltaRt = odometryPoses[basePoseIndex].inv() * odometryPoses[fi];
+            rebasedPoses[fi] = basePose * deltaRt;
+
+            basePoseIndex = fi;
+            basePose = rebasedPoses[basePoseIndex];
         }
     }
 
@@ -206,7 +207,8 @@ void refineGraphSE3Segment(const vector<Mat>& odometryPoses,
             CV_Assert(addGraphVertex(optimizer, fi, rebasedPoses[fi]));
         }
 
-        Mat prevPose = partiallyRefinedPoses[startIndex];
+        int prevPoseIndex = startIndex;
+        Mat prevPose = partiallyRefinedPoses[prevPoseIndex];
         int edgesCount = 0;
         for(int fi = startIndex + 1; fi <= endIndex; fi++)
         {
@@ -214,9 +216,10 @@ void refineGraphSE3Segment(const vector<Mat>& odometryPoses,
                 continue;
 
             // Add edge with previous frame
-            optimizer->addEdge(createEdgeSE3(optimizer->vertex(fi-1), optimizer->vertex(fi),
+            optimizer->addEdge(createEdgeSE3(optimizer->vertex(prevPoseIndex), optimizer->vertex(fi),
                                              prevPose.inv(DECOMP_SVD) * rebasedPoses[fi]));
-            prevPose = rebasedPoses[fi];
+            prevPoseIndex = fi;
+            prevPose = rebasedPoses[prevPoseIndex];
             edgesCount++;
         }
 
