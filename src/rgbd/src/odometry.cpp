@@ -66,21 +66,13 @@ int normalMethod = RgbdNormals::RGBD_NORMALS_METHOD_FALS;
 static inline
 void setDefaultIterCounts(Mat& iterCounts)
 {
-    iterCounts.create(1,4,CV_32SC1);
-    iterCounts.at<int>(0) = 7;
-    iterCounts.at<int>(1) = 7;
-    iterCounts.at<int>(2) = 7;
-    iterCounts.at<int>(3) = 10;
+    iterCounts = Mat(Vec4i(7,7,7,10));
 }
 
 static inline
 void setDefaultMinGradientMagnitudes(Mat& minGradientMagnitudes)
 {
-    minGradientMagnitudes.create(1,4,CV_32FC1);
-    minGradientMagnitudes.at<float>(0) = 12.f;
-    minGradientMagnitudes.at<float>(1) = 5.f;
-    minGradientMagnitudes.at<float>(2) = 3.f;
-    minGradientMagnitudes.at<float>(3) = 1.f;
+    minGradientMagnitudes = Mat(Vec4f(10,10,10,10));
 }
 
 static
