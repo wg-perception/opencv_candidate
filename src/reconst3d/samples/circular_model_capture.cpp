@@ -9,31 +9,10 @@ using namespace cv;
 
 static Mat defaultCameraMatrix()
 {
-    float vals[] = {525., 0., 3.1950000000000000e+02,
+    double vals[] = {525., 0., 3.1950000000000000e+02,
                     0., 525., 2.3950000000000000e+02,
                     0., 0., 1.};
-    return Mat(3,3,CV_32FC1,vals).clone();
-}
-
-static void releaseUnusedFrames(const Ptr<TrajectoryFrames>& keyframesData, vector<Mat>& images, vector<Mat>& depthes)
-{
-    for(size_t imageIndex = 0; imageIndex < images.size(); imageIndex++)
-    {
-        bool isKeyframe = false;
-        for(size_t keyframeIndex = 0; keyframeIndex < keyframesData->frames.size(); keyframeIndex++)
-        {
-            if(keyframesData->frames[keyframeIndex]->ID == static_cast<int>(imageIndex))
-            {
-                isKeyframe = true;
-                break;
-            }
-        }
-        if(!isKeyframe)
-        {
-            images[imageIndex].release();
-            depthes[imageIndex].release();
-        }
-    }
+    return Mat(3,3,CV_64FC1,vals).clone();
 }
 
 int main(int argc, char** argv)
@@ -60,30 +39,40 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    vector<Mat> bgrImages, depthes;
-    loadTODLikeBase(dirname, bgrImages, depthes);
-    if(bgrImages.empty())
+    Mat cameraMatrix = defaultCameraMatrix();
+
+    vector<string> frameIndices;
+    readFrameIndices(dirname, frameIndices);
+    if(frameIndices.empty())
     {
         cout << "Can not load the data from given directory of the base: " << dirname << endl;
         return -1;
     }
 
-    Mat cameraMatrix = defaultCameraMatrix();
+    cout << "Frame indices count " << frameIndices.size() << endl;
 
     CircularCaptureServer onlineCaptureServer;
     onlineCaptureServer.set("cameraMatrix", cameraMatrix);
-    CV_Assert(!bgrImages[0].empty());
-    onlineCaptureServer.initialize(bgrImages[0].size());//, TrajectoryFrames::VALIDFRAME);
-    for(size_t i = 0; i < bgrImages.size(); i++)
-        onlineCaptureServer.push(bgrImages[i], depthes[i], i);
+    onlineCaptureServer.initialize(Size(640,480));
+
+    for(size_t i = 0; i < frameIndices.size(); i++)
+    {
+        Mat bgrImage, depth;
+        loadFrameData(dirname, frameIndices[i], bgrImage, depth);
+
+        onlineCaptureServer.push(bgrImage, depth, i);
+        if(onlineCaptureServer.get<bool>("isLoopClosed"))
+            break;
+        if(onlineCaptureServer.get<bool>("isFinalized"))
+        {
+            cout << "The trajecotry construction is finalized ahead of time.";
+            return -1;
+        }
+    }
 
     Ptr<TrajectoryFrames> trajectoryFrames = onlineCaptureServer.finalize();
     if(constructIfLoopClosureOnly && !onlineCaptureServer.get<bool>("isLoopClosed"))
         return -1;
-
-#if 1
-    releaseUnusedFrames(trajectoryFrames, bgrImages, depthes);
-#endif
 
     ModelReconstructor reconstructor;
     reconstructor.set("isShowStepResults", false);

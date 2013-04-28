@@ -290,7 +290,7 @@ Ptr<CircularCaptureServer::FramePushOutput> CircularCaptureServer::push(const Ma
         firstKeyframe = currFrame;
         pushOutput->frameState |= TrajectoryFrames::KEYFRAME;
         pushOutput->pose = Mat::eye(4,4,CV_64FC1);
-        cout << "First keyframe ID " << frameID << endl;
+        cout << endl << "FIRST KEYFRAME ID " << frameID << endl;
     }
     else
     {
@@ -341,7 +341,7 @@ Ptr<CircularCaptureServer::FramePushOutput> CircularCaptureServer::push(const Ma
                 translationSum += tnorm;
                 if(isLoopClosing)
                     cout << "possible ";
-                cout << "keyframe ID " << frameID << endl;
+                cout << endl << "KEYFRAME ID " << frameID << endl;
                 pushOutput->frameState |= TrajectoryFrames::KEYFRAME;
             }
         }
@@ -438,7 +438,7 @@ void CircularCaptureServer::initialize(const Size& frameResolution, int storeFra
     trajectoryFrames->resumeFrameState = storeFramesWithState;
 
     CV_Assert(!cameraMatrix.empty());
-    CV_Assert(cameraMatrix.type() == CV_32FC1);
+    CV_Assert(cameraMatrix.type() == CV_64FC1);
     CV_Assert(cameraMatrix.size() == Size(3,3));
 
     normalsComputer = new RgbdNormals(frameResolution.height, frameResolution.width, CV_32FC1, cameraMatrix); // inner

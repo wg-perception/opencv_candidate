@@ -12,10 +12,10 @@ using namespace cv;
 
 static Mat defaultCameraMatrix()
 {
-    float vals[] = {525., 0., 3.1950000000000000e+02,
+    double vals[] = {525., 0., 3.1950000000000000e+02,
                     0., 525., 2.3950000000000000e+02,
                     0., 0., 1.};
-    return Mat(3,3,CV_32FC1,vals).clone();
+    return Mat(3,3,CV_64FC1,vals).clone();
 }
 
 int main(int argc, char** argv)
@@ -46,15 +46,18 @@ int main(int argc, char** argv)
     Ptr<ArbitraryCaptureServer> captureServer = new ArbitraryCaptureServer();
     captureServer->set("cameraMatrix", cameraMatrix);
     captureServer->initialize(Size(640,480));
-    for(size_t srcIndex = 0; srcIndex < frameIndices.size(); srcIndex++)
+    for(size_t i = 0; i < frameIndices.size(); i++)
     {
-//        if(srcIndex % 4 != 0)
-//            continue;
+        Mat bgrImage, depth;
+        loadFrameData(dirname, frameIndices[i], bgrImage, depth);
 
-        Mat srcBgrImage, srcDepth;
-        loadFrameData(dirname, frameIndices[srcIndex], srcBgrImage, srcDepth);
+        captureServer->push(bgrImage, depth, i);
 
-        captureServer->push(srcBgrImage, srcDepth, srcIndex);
+        if(captureServer->get<bool>("isFinalized"))
+        {
+            cout << "The trajecotry construction is finalized ahead of time.";
+            return -1;
+        }
     }
 
     Ptr<TrajectoryFrames> trajectoryFrames = captureServer->finalize();
