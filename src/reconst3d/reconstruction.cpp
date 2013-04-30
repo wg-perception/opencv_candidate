@@ -1,9 +1,8 @@
-#if 0
+#include <boost/thread/thread.hpp>
 #include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#endif
+#include <pcl/filters/extract_indices.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/ModelCoefficients.h>
 
 #include <opencv2/rgbd/rgbd.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -30,160 +29,6 @@ preparePosesLinksWithoutRt(const vector<int>& poseIndices, vector<PosesLink>& ds
         dstLinks[i-1] = PosesLink(poseIndices[i-1], poseIndices[i]);
 }
 
-#if 0
-static
-void filterFramesByViewHist(vector<Ptr<RgbdFrame> >& frames,
-                            const vector<int>& frameIndices, const vector<Mat>& poses, const Mat& cameraMatrix)
-{
-    vector<Point3f> transformedPoints3d;
-    vector<Point3f> transformedNormals;
-    vector<Vec3i> pointFrameIndices;
-
-    // fill trainig samples matrix
-    for(size_t frameIndex = 0; frameIndex < frames.size(); frameIndex++)
-    {
-        Mat cloud;
-        Mat normals;
-        {
-            depthTo3d(frames[frameIndex]->depth, cameraMatrix, cloud);
-
-            Mat tcloud, tnormals;
-            perspectiveTransform(cloud.reshape(3,1), tcloud, poses[frameIndex]);
-            Mat R = poses[frameIndex](Rect(0,0,3,3));
-            transform(frames[frameIndex]->normals.reshape(3,1), tnormals, R);
-
-            cloud = tcloud.reshape(3, frames[frameIndex]->depth.rows);
-            normals = tnormals.reshape(3, frames[frameIndex]->depth.rows);
-        }
-    
-        bool isRefinedPose = false;
-        if(std::find(frameIndices.begin(), frameIndices.end(), frameIndex) != frameIndices.end())
-            isRefinedPose = true;
-
-        const Mat& mask = frames[frameIndex]->mask;
-        for(int y = 0; y < cloud.rows; y++)
-        {
-            for(int x = 0; x < cloud.cols; x++)
-            {
-                const Point3f& p = cloud.at<Point3f>(y,x);
-                CV_Assert(normals.type() == CV_32FC3);
-                Point3f n = normals.at<Point3f>(y,x);
-
-                if(isValidDepth(p.z) && mask.at<uchar>(y,x))
-                {
-                    transformedPoints3d.push_back(p);
-                    transformedNormals.push_back(n);
-                    pointFrameIndices.push_back(Vec3i(frameIndex, -1, -1));
-                    if(isRefinedPose)
-                    {
-                        (*pointFrameIndices.rbegin())[1] = x;
-                        (*pointFrameIndices.rbegin())[2] = y;
-                    }
-                }
-            }
-        }
-    }
-
-    Ptr<flann::Index> flannIndex = new flann::Index(Mat(transformedPoints3d).reshape(1, transformedPoints3d.size()), flann::KDTreeIndexParams());
-    
-    const int angleBinCount = 8;
-    const int minViewAnglesCount = 3; // TODO
-
-    //const double maxCosDiff = cos(20./180 * CV_PI);
-    const int maxResults = cvRound(0.05 * transformedPoints3d.size());
-    const double radius = 0.005;//m // TODO
-    const double radius2 = radius * radius;
-
-    for(size_t pointIndex = 0; pointIndex < transformedPoints3d.size(); pointIndex++)
-    {
-        int frameIndex = pointFrameIndices[pointIndex][0];
-        int x =          pointFrameIndices[pointIndex][1];
-        int y =          pointFrameIndices[pointIndex][2];
-
-        if(x == -1)
-            continue;
-
-        const Point3f& p = transformedPoints3d[pointIndex];
-        const Point3f& n = transformedNormals[pointIndex];
-
-        Mat indices(1, maxResults, CV_32SC1, Scalar(-1));
-        Mat dists(1, maxResults, CV_32FC1, Scalar(-1));
-        flannIndex->radiusSearch(Mat(p).reshape(1,1), indices, dists, radius2, maxResults, flann::SearchParams());
-
-        // compute reference direction
-        Point3f refDirection = Point3f(1,0,0);
-        const double badAngleCos = 0.9;
-        if(std::abs(transformedNormals[pointIndex].dot(refDirection)) > badAngleCos)
-            refDirection = Point3f(0,1,0);
-
-        Mat viewAngleHist(angleBinCount, angleBinCount, CV_8UC1, Scalar(0));
-        CV_Assert(indices.at<int>(0) == static_cast<int>(pointIndex));
-
-        vector<char> framesMask(frames.size(), 0);
-        for(int i = 0; i < maxResults; i++)
-        {
-            int nearPointIndex = indices.at<int>(i);
-            if(nearPointIndex < 0)
-                break;
-            
-            int nearPointFrameIndex = pointFrameIndices[nearPointIndex][0];
-            if(framesMask[nearPointFrameIndex])
-                continue;
-
-//            if(std::abs(transformedNormals[nearPointIndex].ddot(n)) < maxCosDiff)
-//                continue;
-
-            // TODO normal angles check
-            // if they are different then continue();
-            const Mat cameraPose = poses[nearPointFrameIndex];
-            Point3f cameraPoint;
-            CV_Assert(cameraPose.type() == CV_64FC1);
-            cameraPoint.x = cameraPose.at<double>(0,3);
-            cameraPoint.y = cameraPose.at<double>(1,3);
-            cameraPoint.z = cameraPose.at<double>(2,3);
-
-            // compute polar angle
-            Point3f toCameraVec = cameraPoint - p;
-            double polarCos = n.dot(toCameraVec);
-            if(polarCos > 1.) polarCos /= polarCos;
-            float polarAngle = std::acos(polarCos);
-            Point3f rn = n;
-            if(polarAngle > 0.5 * CV_PI) // if is was incorrect defined
-            {
-                polarAngle = CV_PI - polarAngle;
-                rn = -n;
-            }
-
-            // compute azimuth angle
-            Point3f projectNormal = toCameraVec - cv::norm(toCameraVec) * polarCos * rn;
-            double azimuthCos = refDirection.ddot(projectNormal);
-            if(azimuthCos > 1.)
-                azimuthCos /= azimuthCos;
-
-            float azimuthAngle = std::acos(azimuthCos);
-            if((refDirection.cross(projectNormal)).ddot(rn) < 0)
-                azimuthAngle  = 2 * CV_PI - azimuthAngle;
-
-            int polarIndex = static_cast<int>(polarAngle * 2 / CV_PI * angleBinCount) % angleBinCount;
-            int azimuthIndex = static_cast<int>(azimuthAngle / (2 * CV_PI) * angleBinCount) % angleBinCount;
-
-            CV_Assert(polarIndex < angleBinCount);
-            CV_Assert(azimuthIndex < angleBinCount);
-            viewAngleHist.at<uchar>(polarIndex, azimuthIndex) = 1;
-            framesMask[nearPointFrameIndex] = 1;
-        }
-        // TODO maybe merge bins with close to zero polar angle?
-        int differentViewAngles = countNonZero(viewAngleHist);
-        //cout << " " << differentViewAngles << flush;
-
-        CV_Assert(differentViewAngles >= 1);
-
-        if(differentViewAngles < minViewAnglesCount)
-            frames[frameIndex]->mask.at<uchar>(y,x) = 0;
-    }
-}
-#endif
-
 static void
 prepareFramesForModelRefinement(const Ptr<TrajectoryFrames>& trajectoryFrames, const vector<int>& frameIndices, vector<Ptr<RgbdFrame> >& dstFrames)
 {
@@ -205,6 +50,71 @@ prepareFramesForModelRefinement(const Ptr<TrajectoryFrames>& trajectoryFrames, c
                                                   srcFrame->ID);
         }
     }
+}
+
+static Mat
+estimateTablePlane(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std::vector<cv::Mat>& objectMasks, const std::vector<cv::Mat>& poses,
+                   const cv::Mat& cameraMatrix, const std::vector<int>& frameIndices=std::vector<int>())
+{
+    size_t usedFrameCount = frameIndices.empty() ? frames.size() : frameIndices.size();
+    pcl::PointCloud<pcl::PointXYZ> tableCloud;
+    for(size_t i = 0; i < usedFrameCount; i++)
+    {
+        int frameIndex = frameIndices.empty() ? i : frameIndices[i];
+        CV_Assert(frameIndex < static_cast<int>(frames.size()) && frameIndex >= 0);
+
+        const Ptr<RgbdFrame>& frame = frames[frameIndex];
+
+        CV_Assert(!frame->depth.empty());
+        CV_Assert(frame->depth.size() == frame->mask.size());
+
+        const int maskElemCount = countNonZero(frame->mask);
+        tableCloud.points.reserve(tableCloud.points.size() + maskElemCount);
+
+        Mat cloud;
+        depthTo3d(frame->depth, cameraMatrix, cloud);
+        Mat transfPoints3d;
+        perspectiveTransform(cloud.reshape(3,1), transfPoints3d, poses[frameIndex]);
+        transfPoints3d = transfPoints3d.reshape(3, cloud.rows);
+
+        Mat tableMask = frame->mask & ~objectMasks[frameIndex];
+        for(int y = 0, pointIndex = 0; y < tableMask.rows; y++)
+        {
+            const uchar* maskRow = tableMask.ptr<uchar>(y);
+            for(int x = 0; x < frame->mask.cols; x++, pointIndex++)
+                if(maskRow[x] && isValidDepth(frame->depth.at<float>(y,x)))
+                {
+                    Point3f cv_p = transfPoints3d.at<Point3f>(y,x);
+                    pcl::PointXYZ pcl_p;
+                    pcl_p.x = cv_p.x; pcl_p.y = cv_p.y; pcl_p.z = cv_p.z;
+                    tableCloud.points.push_back(pcl_p);
+                }
+        }
+    }
+
+    pcl::SACSegmentation<pcl::PointXYZ> seg;
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+    seg.setOptimizeCoefficients (true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setMaxIterations(100);
+    seg.setDistanceThreshold(0.01);
+    seg.setInputCloud(boost::make_shared<const pcl::PointCloud<pcl::PointXYZ> >(tableCloud));
+
+    seg.segment(*inliers, *coefficients);
+
+    CV_Assert(!inliers->indices.empty());
+
+    Mat tableCoefficients = Mat(coefficients->values).clone();
+    CV_Assert(tableCoefficients.type() == CV_32FC1);
+
+    // TODO: It's not absolutely correct, but it's how Rgbd.Normals selects a normal direction. Fix it.
+    if(tableCoefficients.at<float>(2) > 0)
+        tableCoefficients *= -1.f;
+
+    return tableCoefficients.reshape(1,1);
 }
 
 ModelReconstructor::ModelReconstructor()
@@ -264,23 +174,21 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
         ObjectModel(trajectoryFrames->frames, refinedPosesSE3RgbdICP, cameraMatrix, frameIndices).show(0.001, true);
     }
 
+    Mat tablePlane;
+    if(isEstimateRefinedTablePlane)
+        tablePlane = estimateTablePlane(trajectoryFrames->frames, trajectoryFrames->objectMasks, refinedPosesSE3RgbdICP, cameraMatrix, frameIndices);
+
     vector<Ptr<RgbdFrame> > objectFrames; // with mask for object points only,
                                           // they will modified while refining the object points
     prepareFramesForModelRefinement(trajectoryFrames, frameIndices, objectFrames);
-
-#if 0
-    vector<Mat> refinedAllPoses;
-    refineGraphSE3Segment(trajectoryFrames->poses, refinedPosesSE3RgbdICP, frameIndices, refinedAllPoses);
-    genModel(objectFrames, refinedAllPoses, cameraMatrix, frameIndices)->show();
-    filterFramesByViewHist(objectFrames, frameIndices, refinedAllPoses, cameraMatrix);
-    genModel(objectFrames, refinedAllPoses, cameraMatrix, frameIndices)->show();
-#endif
 
     vector<Mat> refinedSE3ICPSE3ModelPoses;
     refineGraphSE3RgbdICPModel(objectFrames, refinedPosesSE3RgbdICP,
                                keyframePosesLinks, cameraMatrix, refinedSE3ICPSE3ModelPoses, frameIndices);
 
     model = new ObjectModel(objectFrames, refinedSE3ICPSE3ModelPoses, cameraMatrix, frameIndices);
+    model->tablePlane = tablePlane;
+
 
     if(isShowStepResults)
     {

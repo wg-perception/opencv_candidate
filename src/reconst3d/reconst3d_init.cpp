@@ -78,4 +78,5 @@ CV_INIT_ALGORITHM_FIX(ArbitraryCaptureServer, "ModelCapture.ArbitraryCaptureServ
 
 CV_INIT_ALGORITHM_FIX(ModelReconstructor, "ModelCapture.ModelReconstructor",
     obj.info()->addParam(obj, "isShowStepResults", obj.isShowStepResults);
+    obj.info()->addParam(obj, "isEstimateRefinedTablePlane", obj.isEstimateRefinedTablePlane);
     obj.info()->addParam(obj, "maxBAPosesCount", obj.maxBAPosesCount);)

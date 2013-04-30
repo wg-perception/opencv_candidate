@@ -47,3 +47,10 @@ target_link_libraries(arbitrary_model_capture ${OpenCV_LIBRARIES}
                                     opencv_candidate_reconst3d
 )
 set_target_properties(arbitrary_model_capture PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")
+
+add_executable(cylinder_evaluation samples/cylinder_evaluation.cpp)
+target_link_libraries(cylinder_evaluation ${OpenCV_LIBRARIES}
+                                    opencv_rgbd
+                                    opencv_candidate_reconst3d
+)
+set_target_properties(cylinder_evaluation PROPERTIES COMPILE_FLAGS "-fopenmp" LINK_FLAGS "-fopenmp")

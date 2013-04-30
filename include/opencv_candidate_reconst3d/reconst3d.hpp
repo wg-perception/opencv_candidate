@@ -344,6 +344,7 @@ public:
 
     // TODO: poses should not be here?
     std::vector<cv::Mat> cameraPoses;
+    cv::Mat tablePlane;
 };
 
 class ModelReconstructor : public cv::Algorithm
@@ -361,6 +362,7 @@ private:
     // TODO make more algorithm params available outside
 
     bool isShowStepResults;
+    int isEstimateRefinedTablePlane;
     int maxBAPosesCount;
 };
 
