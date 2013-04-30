@@ -87,7 +87,7 @@ int main(int argc, char** argv)
         FileStorage fs(string(argv[3]) + ".xml", FileStorage::WRITE);
         CV_Assert(fs.isOpened());
         fs << "tablePlane" << model->tablePlane;
-#else
+#endif
     }
 
     model->show();

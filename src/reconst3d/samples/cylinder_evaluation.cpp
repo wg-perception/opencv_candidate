@@ -197,13 +197,14 @@ int main(int argc, char** argv)
     int halfIndex = dists.size()/2;
     nth_element(dists.begin(), dists.begin() + halfIndex, dists.end());
 
-    cout << "median dist" << dists[halfIndex] << endl;
+    cout << endl;
+    cout << "median dist: " << dists[halfIndex] << endl;
 
     double minVal, maxVal;
     minMaxLoc(Mat(dists), &minVal, &maxVal);
 
-    cout << "min dist" << minVal << endl;
-    cout << "max dist" << maxVal << endl;
+    cout << "min dist: " << minVal << endl;
+    cout << "max dist: " << maxVal << endl;
 
     return 0;
 }
