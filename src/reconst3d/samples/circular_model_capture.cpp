@@ -84,7 +84,7 @@ int main(int argc, char** argv)
     {
         model->write_ply(argv[3]);
 #if 0
-        FileStorage fs(string(argv[3]) + ".xml", FileStorage::WRITE);
+        FileStorage fs(string(argv[3]) + ".tablePlane.xml", FileStorage::WRITE);
         CV_Assert(fs.isOpened());
         fs << "tablePlane" << model->tablePlane;
 #endif

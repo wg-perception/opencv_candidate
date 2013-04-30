@@ -68,7 +68,7 @@ void prepareCylinderModel(const vector<Point3f>& points,
     {
         float shiftedZ = rotatedPoints[i].z - zShift;
         if(shiftedZ > minZ && shiftedZ < maxZ)
-            cylinderPoints.push_back(Point3f(rotatedPoints[i].y, rotatedPoints[i].y, shiftedZ));
+            cylinderPoints.push_back(Point3f(rotatedPoints[i].x, rotatedPoints[i].y, shiftedZ));
     }
 }
 
@@ -108,15 +108,50 @@ calcCorresps(const vector<Point3f>& src, vector<Point3f>& dst, float Rad)
     }
 }
 
+static void
+calcDists(const vector<Point3f>& src, const vector<Point3f>& dst,
+          double* _meanDist=0, double* _medianDist=0, double* _minDist=0, double* _maxDist=0)
+{
+    vector<float> dists;
+    dists.resize(src.size());
+    for(size_t i = 0; i < src.size(); i++)
+         dists[i] = cv::norm(src[i] - dst[i]);
+
+    int halfIndex = dists.size()/2;
+    nth_element(dists.begin(), dists.begin() + halfIndex, dists.end());
+
+    double meanDist, medianDist, minDist, maxDist;
+    meanDist = cv::sum(Mat(dists))[0] / dists.size();
+    medianDist = dists[halfIndex];
+    minMaxLoc(Mat(dists), &minDist, &maxDist);
+
+    cout << endl;
+    cout << "mean dist: " << meanDist << endl;
+    cout << "median dist: " << medianDist << endl;
+    cout << "min dist: " << minDist << endl;
+    cout << "max dist: " << maxDist << endl;
+
+    if(_meanDist)
+        *_meanDist = meanDist;
+    if(_medianDist)
+        *_medianDist = medianDist;
+    if(_minDist)
+        *_minDist = minDist;
+    if(_maxDist)
+        *_maxDist = maxDist;
+}
+
 static
 void alignCylinderModelWithGroundTruth(vector<Point3f>& points, float Rad)
 {
-    const int itersCount = 10;
+    const int itersCount = 50;
 
     for(int iter = 0; iter < itersCount; iter++)
     {
         vector<Point3f> correspPoints;
         calcCorresps(points, correspPoints, Rad);
+
+        calcDists(points, correspPoints);
 
         // compute points centers
         Mat srcPoints3d(points),
@@ -159,6 +194,9 @@ void alignCylinderModelWithGroundTruth(vector<Point3f>& points, float Rad)
 
 int main(int argc, char** argv)
 {
+
+	// TODO test this app, it seems it has problems!
+
     if(argc != 6)
     {
         cout << "Format: " << argv[0] << " model_ply table_coeffs_xml minZ maxZ Rad" << endl;
@@ -170,6 +208,7 @@ int main(int argc, char** argv)
 
     ObjectModel model;
     model.read_ply(model_filename);
+    model.show();
 
     Mat tablePlane;
     FileStorage fs(argv[2], FileStorage::READ);
@@ -181,30 +220,23 @@ int main(int argc, char** argv)
     const float maxZ = atof(argv[4]);
     const float Rad = atof(argv[5]);
 
-    vector<Point3f> cylinderModel;
-    prepareCylinderModel(model.points3d, tablePlane, minZ, maxZ, cylinderModel);
+    vector<Point3f> cylinderModelPoints;
+    prepareCylinderModel(model.points3d, tablePlane, minZ, maxZ, cylinderModelPoints);
 
-    alignCylinderModelWithGroundTruth(cylinderModel, Rad);
+    alignCylinderModelWithGroundTruth(cylinderModelPoints, Rad);
 
     vector<Point3f> correspPoints;
-    calcCorresps(cylinderModel, correspPoints, Rad);
+    calcCorresps(cylinderModelPoints, correspPoints, Rad);
+    calcDists(cylinderModelPoints, correspPoints);
 
-    vector<float> dists;
-    dists.resize(cylinderModel.size());
-    for(size_t i = 0; i < cylinderModel.size(); i++)
-        dists[i] = cv::norm(cylinderModel[i] - correspPoints[i]);
-
-    int halfIndex = dists.size()/2;
-    nth_element(dists.begin(), dists.begin() + halfIndex, dists.end());
-
-    cout << endl;
-    cout << "median dist: " << dists[halfIndex] << endl;
-
-    double minVal, maxVal;
-    minMaxLoc(Mat(dists), &minVal, &maxVal);
-
-    cout << "min dist: " << minVal << endl;
-    cout << "max dist: " << maxVal << endl;
+    ObjectModel alignedCylinders;
+    std::vector<cv::Vec3b> pointsColor(cylinderModelPoints.size(), Vec3b(0,0,255));
+    std::vector<cv::Vec3b> correspPointsColor(correspPoints.size(), Vec3b(0,255,0));
+    alignedCylinders.points3d.insert(alignedCylinders.points3d.end(), cylinderModelPoints.begin(), cylinderModelPoints.end());
+    alignedCylinders.points3d.insert(alignedCylinders.points3d.end(), correspPoints.begin(), correspPoints.end());
+    alignedCylinders.colors.insert(alignedCylinders.colors.end(), pointsColor.begin(), pointsColor.end());
+    alignedCylinders.colors.insert(alignedCylinders.colors.end(), correspPointsColor.begin(), correspPointsColor.end());
+    alignedCylinders.show();
 
     return 0;
 }
