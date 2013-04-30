@@ -329,7 +329,7 @@ int computeCorrespsFiltered(const Mat& K, const Mat& K_inv, const Mat& Rt,
                             const Mat& image0, const Mat& image1,
                             float maxColorDiff)
 {
-    const double maxNormalsDiff = 50; // in degrees
+    const double maxNormalsDiff = 30; // in degrees
     const double maxNormalAngleDev = 75; // in degrees
 
     const double cosMaxNormalsDiff = std::cos(maxNormalsDiff / 180 * CV_PI);
@@ -424,6 +424,11 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, int pyramidLevel, cons
                                                             frames[prevFrameIdx]->pyramidNormals[pyramidLevel],
                                                             frames[currFrameIdx]->pyramidImage[pyramidLevel],
                                                             frames[prevFrameIdx]->pyramidImage[pyramidLevel]);
+
+            const int minCorrespsCount = 100;
+
+            if(correspsCount_icp < minCorrespsCount)
+                continue;
 #define WITH_RGBD 1
 #if WITH_RGBD
             const double rgbdScale = 1./(255 * std::max(cameraMatrix_64F.at<double>(0,0), cameraMatrix_64F.at<double>(1,1)));
@@ -439,6 +444,8 @@ void fillGraphSE3RgbdICP(g2o::SparseOptimizer* optimizer, int pyramidLevel, cons
                                                              frames[prevFrameIdx]->pyramidNormals[pyramidLevel],
                                                              frames[currFrameIdx]->pyramidImage[pyramidLevel],
                                                              frames[prevFrameIdx]->pyramidImage[pyramidLevel]);
+            if(correspsCount_rgbd < minCorrespsCount)
+                continue;
 #endif
 
             cout << currFrameIdx << " -> " << prevFrameIdx << ": icp correspondences count " << correspsCount_icp << endl;

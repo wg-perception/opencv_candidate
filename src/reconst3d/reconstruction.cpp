@@ -119,6 +119,7 @@ estimateTablePlane(const std::vector<cv::Ptr<cv::RgbdFrame> >& frames, const std
 
 ModelReconstructor::ModelReconstructor()
     : isShowStepResults(false),
+      isEstimateRefinedTablePlane(false),
       maxBAPosesCount(DEFAULT_MAX_BA_POSES_COUNT)
 {}
 
@@ -131,7 +132,6 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     CV_Assert(!trajectoryFrames->keyframePosesLinks.empty());
 
     const float voxelSize = 0.005f;
-
     if(isShowStepResults)
     {
         cout << "Frame-to-frame odometry result" << endl;
@@ -181,6 +181,17 @@ void ModelReconstructor::reconstruct(const Ptr<TrajectoryFrames>& trajectoryFram
     vector<Ptr<RgbdFrame> > objectFrames; // with mask for object points only,
                                           // they will modified while refining the object points
     prepareFramesForModelRefinement(trajectoryFrames, frameIndices, objectFrames);
+
+    {
+        vector<Mat> refinedPosesSE3RgbdICP2;
+        refineGraphSE3RgbdICP(objectFrames, refinedPosesSE3RgbdICP,
+                              keyframePosesLinks, cameraMatrix, 1, refinedPosesSE3RgbdICP2, frameIndices);
+
+        refinedPosesSE3RgbdICP = refinedPosesSE3RgbdICP2;
+
+        if(isShowStepResults)
+            ObjectModel(objectFrames, refinedPosesSE3RgbdICP, cameraMatrix, frameIndices).show(0.001, true);
+    }
 
     vector<Mat> refinedSE3ICPSE3ModelPoses;
     refineGraphSE3RgbdICPModel(objectFrames, refinedPosesSE3RgbdICP,

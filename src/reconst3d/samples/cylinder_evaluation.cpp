@@ -59,8 +59,8 @@ void prepareCylinderModel(const vector<Point3f>& points,
         tablePoint = Point3d(-tablePlane[3]/tablePlane[0], 0, 0);
     else
         CV_Assert(0);
-    // the point Z coordinate after the rotation
-    float zShift = R.row(2).dot(Mat(tablePoint));
+    // the point Z coordinate after the rotation for the future shift all the points
+    float zShift = R.row(2).t().dot(Mat(tablePoint));
 
     // select only points within (minZ, maxZ)
     cylinderPoints.clear();
@@ -94,9 +94,8 @@ calcCorresps(const vector<Point3f>& src, vector<Point3f>& dst, float Rad)
         {
             const float r = srcP.y / srcP.x;
             const float s = 1.f / sqrt(1.f + r*r);
-            const float x = Rad * s;
+            const float x = s * Rad;
             const float y = r * s * Rad;
-
 
             float d0 = (srcP.x - x) * (srcP.x - x) + (srcP.y - y) * (srcP.y - y);
             float d1 = (srcP.x + x) * (srcP.x + x) + (srcP.y + y) * (srcP.y + y);
@@ -112,13 +111,13 @@ calcCorresps(const vector<Point3f>& src, vector<Point3f>& dst, float Rad)
 static
 void alignCylinderModelWithGroundTruth(vector<Point3f>& points, float Rad)
 {
-    vector<Point3f> correspPoints;
-    calcCorresps(points, correspPoints, Rad);
-
     const int itersCount = 10;
 
     for(int iter = 0; iter < itersCount; iter++)
     {
+        vector<Point3f> correspPoints;
+        calcCorresps(points, correspPoints, Rad);
+
         // compute points centers
         Mat srcPoints3d(points),
             dstPoints3d(correspPoints);
@@ -152,7 +151,7 @@ void alignCylinderModelWithGroundTruth(vector<Point3f>& points, float Rad)
         t.copyTo(Rt(Rect(3,0,1,3)));
 
         vector<Point3f> transformedPoints;
-        transform(points, transformedPoints, Rt);
+        perspectiveTransform(points, transformedPoints, Rt);
 
         transformedPoints.swap(points);
     }

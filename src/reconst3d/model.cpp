@@ -330,7 +330,7 @@ void ObjectModel::show(float gridSize, bool withCameraPoses, int normalLevel) co
     pcl::PointCloud<pcl::Normal>::ConstPtr normalsPtr  = boost::make_shared<const pcl::PointCloud<pcl::Normal> >(globalNormals);
 
     boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer = boost::shared_ptr<pcl::visualization::PCLVisualizer>(new pcl::visualization::PCLVisualizer ("3D Viewer"));
-    viewer->setBackgroundColor(0, 0, 0);
+    viewer->setBackgroundColor(0.5, 0.5, 1);
 
     pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(xyzrgbPtr);
     viewer->addPointCloud<pcl::PointXYZRGB>(xyzrgbPtr, rgb, "result");

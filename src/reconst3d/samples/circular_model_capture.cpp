@@ -54,7 +54,6 @@ int main(int argc, char** argv)
     CircularCaptureServer onlineCaptureServer;
     onlineCaptureServer.set("cameraMatrix", cameraMatrix);
     onlineCaptureServer.initialize(Size(640,480));
-
     for(size_t i = 0; i < frameIndices.size(); i++)
     {
         Mat bgrImage, depth;
@@ -75,13 +74,21 @@ int main(int argc, char** argv)
         return -1;
 
     ModelReconstructor reconstructor;
-    reconstructor.set("isShowStepResults", false);
+    reconstructor.set("isShowStepResults", true);
+    reconstructor.set("isEstimateRefinedTablePlane", true);
 
     Ptr<ObjectModel> model;
     reconstructor.reconstruct(trajectoryFrames, cameraMatrix, model);
 
     if(argc == 4)
+    {
         model->write_ply(argv[3]);
+#if 0
+        FileStorage fs(string(argv[3]) + ".xml", FileStorage::WRITE);
+        CV_Assert(fs.isOpened());
+        fs << "tablePlane" << model->tablePlane;
+#else
+    }
 
     model->show();
 

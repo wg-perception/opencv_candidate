@@ -139,19 +139,21 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
         frames[i] = fr;
     }
 
-    for(size_t i = 0; i < frames.size(); i++)
-    {
-        frames[i]->releasePyramids();
-        odom.prepareFrameCache(frames[i], OdometryFrame::CACHE_ALL);
-    }
-
     const int iterCount = 3;//7
     const int minCorrespCount = 3;
     const float maxColorDiff = 50;
 
+#if 1 // the RAM is enough
+    const double maxTranslation = DBL_MAX;
+    const double maxRotation = DBL_MAX;
+#else
+    // this version is less accurate because does not set up all corresps for each point
+    // TODO optimize the memory usage
     const double maxTranslation = 0.20;
     const double maxRotation = 30;
-    const double maxDepthDiff = 0.07;
+#endif
+    const double maxDepthDiff = 0.005;
+
     for(int iter = 0; iter < iterCount; iter++)
     {
         G2OLinearSolver* linearSolver =  createLinearSolver(DEFAULT_LINEAR_SOLVER_TYPE);
@@ -415,7 +417,8 @@ void refineGraphSE3RgbdICPModel(std::vector<Ptr<RgbdFrame> >& _frames,
 
     for(size_t i = 0; i < frames.size(); i++)
     {
-        Ptr<RgbdFrame> fr = new RgbdFrame(_frames[i]->image, frames[i]->depth, _frames[i]->mask, frames[i]->normals, _frames[i]->ID);
+        Ptr<RgbdFrame> fr = new RgbdFrame(_frames[i]->image, frames[i]->depth, frames[i]->pyramidMask[0],
+                                          frames[i]->normals, _frames[i]->ID);
         _frames[i] = fr;
     }
 }
