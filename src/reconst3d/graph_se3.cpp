@@ -93,7 +93,7 @@ void fillGraphSE3(g2o::SparseOptimizer* optimizer,
         optimizer->addEdge(createEdgeSE3(optimizer->vertex(srcVertexIndex), optimizer->vertex(dstVertexIndex), Rt));
     }
 
-    int fixedVertexIndex = posesLinks[0].srcIndex;
+    int fixedVertexIndex = posesLinks[0].dstIndex;
     optimizer->vertex(fixedVertexIndex)->setFixed(true); //fix at origin
 }
 
