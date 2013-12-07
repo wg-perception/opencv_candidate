@@ -12,7 +12,6 @@ else()
   set(OPENCV_CREATIVE opencv_creative)
 endif()
 
-if (${catkin_VERSION} VERSION_GREATER "0.5.28")
 if (libg2o_FOUND)
   set(EXTRA_DEPENDS libg2o)
   set(EXTRA_LIBRARIES opencv_candidate_reconst3d)
@@ -25,18 +24,6 @@ catkin_package(CFG_EXTRAS depends.cmake
                          opencv_rgbd
                          ${opencv_candidate_reconst3d}
 )
-else()
-catkin_stack()
-catkin_project(opencv_candidate
-               CFG_EXTRAS depends.cmake
-               DEPENDS OpenCV libg2o
-               INCLUDE_DIRS include
-               LIBRARIES opencv_candidate
-                         ${OPENCV_CREATIVE}
-                         opencv_rgbd
-)
-list(APPEND catkin_LIBRARIES ${libg2o_LIBRARIES})
-endif()
 
 add_definitions(-Wall)
 
