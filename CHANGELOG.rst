@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.1 (2014-04-13)
+------------------
 * get distro agnostic OpenCv2 dependency
 * Contributors: Vincent Rabaud
 
