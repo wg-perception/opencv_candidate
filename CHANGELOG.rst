@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.0 (2014-04-13)
+------------------
 * disable tests as the Ubuntu version of OpenCV has a bug with TS for now (cvconfig.h not present)
 * drop Fuerte support
 * Contributors: Vincent Rabaud
