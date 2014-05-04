@@ -1,4 +1,4 @@
-find_package(Boost REQUIRED thread thread-mt)
+find_package(Boost REQUIRED thread system)
 
 include_directories(SYSTEM /opt/DepthSenseSDK/include
                            ${OpenCV_INCLUDE_DIRS}
