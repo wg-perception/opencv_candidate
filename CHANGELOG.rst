@@ -1,3 +1,12 @@
+Forthcoming
+-----------
+* do not build reconst3d as it is not used anywhere
+  It's also a way to remove a package that depends on g2o for less maintenance
+* update url and maintainer's email address
+* add basic docs
+* compile under trusty
+* Contributors: Vincent Rabaud
+
 0.2.1 (2014-04-13)
 ------------------
 * get distro agnostic OpenCv2 dependency
