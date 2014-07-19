@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.2 (2014-07-19)
+------------------
 * do not build reconst3d as it is not used anywhere
   It's also a way to remove a package that depends on g2o for less maintenance
 * update url and maintainer's email address
