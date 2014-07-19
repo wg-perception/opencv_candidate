@@ -4,10 +4,10 @@
   <description>Experimental OpenCV functions</description>
   <author email="erublee@willowgarage.com">Ethan Rublee</author>
   <author email="vrabud@willowgarage.com">Vincent Rabaud</author>
-  <maintainer email="vrabaud@willowgarage.com">Vincent Rabaud</maintainer>
+  <maintainer email="vincent.rabaud@gmail.com">Vincent Rabaud</maintainer>
   <license>BSD</license>
 
-  <url>http://ecto.willowgarage.com</url>
+  <url>https://github.com/wg-perception/opencv_candidate</url>
 
   <build_depend>libg2o</build_depend>
   <build_depend>cv_bridge</build_depend>
