@@ -1,2 +1,0 @@
-list(APPEND catkin_LIBRARIES cholmod cxsparse)
-list(APPEND opencv_candidate_LIBRARIES cholmod cxsparse)

@@ -16,16 +16,13 @@ if (libg2o_FOUND)
   set(EXTRA_DEPENDS libg2o)
   set(EXTRA_LIBRARIES opencv_candidate_reconst3d)
 endif()
-catkin_package(CFG_EXTRAS depends.cmake
-               DEPENDS OpenCV ${EXTRA_DEPENDS}
+catkin_package(DEPENDS OpenCV ${EXTRA_DEPENDS}
                INCLUDE_DIRS include
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
                          opencv_rgbd
                          ${opencv_candidate_reconst3d}
 )
-
-add_definitions(-Wall)
 
 find_package(OpenCV REQUIRED core imgproc highgui calib3d)
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
