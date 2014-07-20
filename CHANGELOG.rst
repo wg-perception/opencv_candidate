@@ -1,3 +1,8 @@
+Forthcoming
+-----------
+* no need for CMake hacks (plus, cholmod is not needed anymore)
+* Contributors: Vincent Rabaud
+
 0.2.2 (2014-07-19)
 ------------------
 * do not build reconst3d as it is not used anywhere
