@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.3 (2014-07-20)
+------------------
 * no need for CMake hacks (plus, cholmod is not needed anymore)
 * Contributors: Vincent Rabaud
 
