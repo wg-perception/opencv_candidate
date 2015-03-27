@@ -610,7 +610,7 @@ namespace
       // Interpolate the radial image to make derivatives meaningful
       cv::Mat_<T> r;
       // higher quality remapping does not help here
-      cv::remap(r_non_interp, r, xy_, fxy_, CV_INTER_LINEAR);
+      cv::remap(r_non_interp, r, xy_, fxy_, cv::INTER_LINEAR);
 
       // Compute the derivatives with respect to theta and phi
       // TODO add bilateral filtering (as done in kinfu)
