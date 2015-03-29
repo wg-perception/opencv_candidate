@@ -43,10 +43,7 @@
 #ifndef __OPENCV_DATAMATRIX_HPP__
 #define __OPENCV_DATAMATRIX_HPP__
 
-#include "opencv2/core/core.hpp"
-#include "opencv2/legacy/compat.hpp"
-#include "opencv2/imgproc/imgproc_c.h"
-#include "opencv2/core/internal.hpp"
+#include <opencv2/core/core.hpp>
 
 /****************************************************************************************\
 *                                Datamatrix                                              *
@@ -56,7 +53,7 @@ namespace opencv_candidate
 struct DataMatrixCode {
   char msg[4]; //TODO std::string
   cv::Mat original;
-  cv::Point corners[4]; //TODO vector
+  std::vector<cv::Point2i> corners; //TODO vector
 };
 
 void findDataMatrix(const cv::Mat& image, std::vector<DataMatrixCode>& codes);
@@ -72,10 +69,10 @@ typedef unsigned char uint8;
 
 struct CV_EXPORTS CvDataMatrixCode {
   char msg[4];
-  CvMat *original;
-  CvMat *corners;
+  cv::Mat original;
+  std::vector<cv::Point2i> corners;
 };
 
 #include <deque>
-std::deque<CvDataMatrixCode> cvFindDataMatrix(CvMat *im);
+std::deque<CvDataMatrixCode> cvFindDataMatrix(cv::Mat& im);
 #endif

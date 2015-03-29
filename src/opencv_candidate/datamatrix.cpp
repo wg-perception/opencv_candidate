@@ -1,5 +1,10 @@
 #include <opencv_candidate/datamatrix.hpp>
 
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/legacy/compat.hpp>
+#include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/core/internal.hpp>
+
 #if CV_SSE2
 #include <xmmintrin.h>
 #endif
@@ -18,26 +23,26 @@ using namespace std;
 class Sampler {
 public:
   CvMat *im;
-  CvPoint o;
-  CvPoint c, cc;
-  CvMat *perim;
-  CvPoint fcoord(float fx, float fy);
-  CvPoint coord(int ix, int iy);
-  Sampler(CvMat *_im, CvPoint _o, CvPoint _c, CvPoint _cc);
+  cv::Point2i o;
+  cv::Point2i c, cc;
+  std::vector<cv::Point2i> perim;
+  cv::Point2i fcoord(float fx, float fy);
+  cv::Point2i coord(int ix, int iy);
+  Sampler(CvMat *_im, cv::Point2i _o, cv::Point2i _c, cv::Point2i _cc);
   uint8 getpixel(int ix, int iy);
-  int isinside(int x, int y);
+  int isinside(const cv::Point2i& p_ini);
   int overlap(Sampler &other);
   int hasbars();
   void timing();
-  CvMat *extract();
-  Sampler():im(0),perim(0){}
+  cv::Mat extract();
+  Sampler():im(0){}
   ~Sampler(){}
 };
 
-class code {    // used in this file only
+class Code {    // used in this file only
 public:
   char msg[4];
-  CvMat *original;
+  cv::Mat original;
   Sampler sa;
 };
 
@@ -55,7 +60,7 @@ unsigned char ccblk[256] = { 34,17,2,17,19,19,2,17,36,36,2,36,19,19,2,17,51,51,2
     36,19,19,2,32,66,66,2,66,19,19,2,66,36,36,2,36,19,19,2,66,51,51,2,51,19,19,2,51,36,36,2,36,19,19,2,32,49,49,2,49,
     19,19,2,49,36,36,2,36,19,19,2,49,51,51,2,51,19,19,2,51,36,36,2,36,19,19,2,49,66,66,2,66,19,19,2,66,36,36,2,36,19,
     19,2,66,51,51,2,51,19,19,2,51,36,36,2,36,19,19,2,34 };
-static const CvPoint pickup[64] = { {7,6},{8,6},{7,5},{8,5},{1,5},{7,4},{8,4},{1,4},{1,8},{2,8},{1,7},{2,7},{3,7},
+static const cv::Point2i pickup[64] = { {7,6},{8,6},{7,5},{8,5},{1,5},{7,4},{8,4},{1,4},{1,8},{2,8},{1,7},{2,7},{3,7},
     {1,6},{2,6},{3,6},{3,2},{4,2},{3,1},{4,1},{5,1},{3,8},{4,8},{5,8},{6,1},{7,1},{6,8},{7,8},{8,8},{6,7},{7,7},{8,7},
     {4,7},{5,7},{4,6},{5,6},{6,6},{4,5},{5,5},{6,5},{2,5},{3,5},{2,4},{3,4},{4,4},{2,3},{3,3},{4,3},{8,3},{1,3},{8,2},
     {1,2},{2,2},{8,1},{1,1},{2,1},{5,4},{6,4},{5,3},{6,3},{7,3},{5,2},{6,2},{7,2} };
@@ -97,55 +102,48 @@ static const float eincs[] = {
 static const int CV_DECL_ALIGNED(16) absmask[] = {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff};
 #define _mm_abs_ps(x) _mm_and_ps((x), *(const __m128*)absmask)
 
-static void writexy(CvMat *m, int r, CvPoint p)
-{
-  int *pdst = (int*)cvPtr2D(m, r, 0);
-  pdst[0] = p.x;
-  pdst[1] = p.y;
-}
-
-Sampler::Sampler(CvMat *_im, CvPoint _o, CvPoint _c, CvPoint _cc)
+Sampler::Sampler(CvMat *_im, cv::Point2i _o, cv::Point2i _c, cv::Point2i _cc)
 {
   im = _im;
   o = _o;
   c = _c;
   cc = _cc;
-  perim = cvCreateMat(4, 1, CV_32SC2);
-  writexy(perim, 0, fcoord(-.2f,-.2f));
-  writexy(perim, 1, fcoord(-.2f,1.2f));
-  writexy(perim, 2, fcoord(1.2f,1.2f));
-  writexy(perim, 3, fcoord(1.2f,-.2f));
+  perim.resize(4);
+  perim[0] = fcoord(-.2f,-.2f);
+  perim[1] = fcoord(-.2f,1.2f);
+  perim[2] = fcoord(1.2f,1.2f);
+  perim[3] = fcoord(1.2f,-.2f);
 }
 
-CvPoint Sampler::fcoord(float fx, float fy)
+cv::Point2i Sampler::fcoord(float fx, float fy)
 {
-  CvPoint r;
+  cv::Point2i r;
   r.x = (int)(o.x + fx * (cc.x - o.x) + fy * (c.x - o.x));
   r.y = (int)(o.y + fx * (cc.y - o.y) + fy * (c.y - o.y));
   return r;
 }
 
-CvPoint Sampler::coord(int ix, int iy)
+cv::Point2i Sampler::coord(int ix, int iy)
 {
   return fcoord(0.05f + 0.1f * ix, 0.05f + 0.1f * iy);
 }
 
 uint8 Sampler::getpixel(int ix, int iy)
 {
-  CvPoint pt = coord(ix, iy);
+  cv::Point2i pt = coord(ix, iy);
   if ((0 <= pt.x) && (pt.x < im->cols) && (0 <= pt.y) && (pt.y < im->rows))
     return *cvPtr2D(im, pt.y, pt.x);
   else
     return 0;
 }
 
-int Sampler::isinside(int x, int y)
+int Sampler::isinside(const cv::Point2i& p_ini)
 {
-  CvPoint2D32f pt;
-  pt.x = (float)x;
-  pt.y = (float)y;
+  cv::Point2f pt;
+  pt.x = float(p_ini.x);
+  pt.y = float(p_ini.y);
   if ((0 <= pt.x) && (pt.x < im->cols) && (0 <= pt.y) && (pt.y < im->rows))
-    return cvPointPolygonTest(perim, pt, 0) < 0;
+    return cv::pointPolygonTest(perim, pt, 0) < 0;
   else
     return 0;
 }
@@ -153,12 +151,9 @@ int Sampler::isinside(int x, int y)
 int Sampler::overlap(Sampler &other)
 {
   for (int i = 0; i < 4; i++) {
-    CvScalar p;
-    p = cvGet2D(other.perim, i, 0);
-    if (isinside((int)p.val[0], (int)p.val[1]))
+    if (isinside(other.perim[i]))
       return 1;
-    p = cvGet2D(perim, i, 0);
-    if (other.isinside((int)p.val[0], (int)p.val[1]))
+    if (other.isinside(perim[i]))
       return 1;
   }
   return 0;
@@ -182,14 +177,14 @@ void Sampler::timing()
   }*/
 }
 
-CvMat *Sampler::extract()
+cv::Mat Sampler::extract()
 {
   // return a 10x10 CvMat for the current contents, 0 is black, 255 is white
   // Sampler has (0,0) at bottom left, so invert Y
-  CvMat *r = cvCreateMat(10, 10, CV_8UC1);
+  cv::Mat_<uchar> r(10, 10);
   for (int x = 0; x < 10; x++)
     for (int y = 0; y < 10; y++)
-      *cvPtr2D(r, 9 - y, x) = (getpixel(x, y) < 128) ? 0 : 255;
+      r(9 - y, x) = (getpixel(x, y) < 128) ? 0 : 255;
   return r;
 }
 
@@ -252,7 +247,7 @@ static uint8 gf256mul(uint8 a, uint8 b)
     return Alog[(Log[a] + Log[b]) % 255];
 }
 
-static int decode(Sampler &sa, code &cc)
+static int decode(Sampler &sa, Code &cc)
 {
   uint8 binary[8] = {0,0,0,0,0,0,0,0};
   uint8 b = 0;
@@ -311,16 +306,16 @@ static int decode(Sampler &sa, code &cc)
   }
 }
 
-static deque<CvPoint> trailto(CvMat *v, int x, int y, CvMat *terminal)
+static deque<cv::Point2i> trailto(CvMat *v, int x, int y, CvMat *terminal)
 {
-  CvPoint np;
+  cv::Point2i np;
   /* Return the last 10th of the trail of points following v from (x,y)
    * to terminal
    */
 
   int ex = x + ((short*)cvPtr2D(terminal, y, x))[0];
   int ey = y + ((short*)cvPtr2D(terminal, y, x))[1];
-  deque<CvPoint> r;
+  deque<cv::Point2i> r;
   while ((x != ex) || (y != ey)) {
     np.x = x;
     np.y = y;
@@ -388,7 +383,7 @@ deque <CvDataMatrixCode> cvFindDataMatrix(CvMat *im)
   cfollow(vc, cxy);
   cfollow(vcc, ccxy);
 
-  deque <CvPoint> candidates;
+  deque <cv::Point2i> candidates;
   {
     int x, y;
     int r = cxy->rows;
@@ -427,7 +422,7 @@ deque <CvDataMatrixCode> cvFindDataMatrix(CvMat *im)
         unsigned int CV_DECL_ALIGNED(16) result[4];
         _mm_store_ps((float*)result, iscand);
         int ix;
-        CvPoint np;
+        cv::Point2i np;
         for (ix = 0; ix < 4; ix++) {
           if (result[ix]) {
             np.x = x + ix;
@@ -439,21 +434,21 @@ deque <CvDataMatrixCode> cvFindDataMatrix(CvMat *im)
     }
   }
 
-  deque <code> codes;
+  deque <Code> codes;
   size_t i, j, k;
   while (!candidates.empty()) {
-    CvPoint o = candidates.front();
+    cv::Point2i o = candidates.front();
     candidates.pop_front();
-    deque<CvPoint> ptc = trailto(vc, o.x, o.y, cxy);
-    deque<CvPoint> ptcc = trailto(vcc, o.x, o.y, ccxy);
+    deque<cv::Point2i> ptc = trailto(vc, o.x, o.y, cxy);
+    deque<cv::Point2i> ptcc = trailto(vcc, o.x, o.y, ccxy);
     for (j = 0; j < ptc.size(); j++) {
       for (k = 0; k < ptcc.size(); k++) {
-        code cc;
+        Code cc;
         Sampler sa(im, o, ptc[j], ptcc[k]);
         for (i = 0; i < codes.size(); i++) {
           if (sa.overlap(codes[i].sa))
           {
-            cvReleaseMat(&sa.perim);
+            sa.perim.clear();
             goto endo;
           }
         }
@@ -462,7 +457,7 @@ deque <CvDataMatrixCode> cvFindDataMatrix(CvMat *im)
           goto endo;
         }
 
-        cvReleaseMat(&sa.perim);
+        sa.perim.clear();
       }
     }
 endo: ; // end search for this o
@@ -504,14 +499,8 @@ namespace
     {
       DataMatrixCode dm;
       std::memcpy(dm.msg,cvdm.msg,sizeof(cvdm.msg));
-      dm.original = cv::Mat(cvdm.original,true);
-      cvReleaseMat(&cvdm.original);
-      cv::Mat c(cvdm.corners,true);
-      dm.corners[0] = c.at<Point>(0,0);
-      dm.corners[1] = c.at<Point>(1,0);
-      dm.corners[2] = c.at<Point>(2,0);
-      dm.corners[3] = c.at<Point>(3,0);
-      cvReleaseMat(&cvdm.corners);
+      dm.original = cvdm.original.clone();
+      dm.corners = cvdm.corners;
       return dm;
     }
   };
