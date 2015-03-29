@@ -38,7 +38,7 @@
 
 #ifdef __cplusplus
 
-#include <limits.h>
+#include <limits>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/types_c.h>
@@ -371,18 +371,18 @@ namespace cv
     void
     releasePyramids();
 
-    vector<Mat> pyramidImage;
-    vector<Mat> pyramidDepth;
-    vector<Mat> pyramidMask;
+    std::vector<Mat> pyramidImage;
+    std::vector<Mat> pyramidDepth;
+    std::vector<Mat> pyramidMask;
 
-    vector<Mat> pyramidCloud;
+    std::vector<Mat> pyramidCloud;
 
-    vector<Mat> pyramid_dI_dx;
-    vector<Mat> pyramid_dI_dy;
-    vector<Mat> pyramidTexturedMask;
+    std::vector<Mat> pyramid_dI_dx;
+    std::vector<Mat> pyramid_dI_dy;
+    std::vector<Mat> pyramidTexturedMask;
 
-    vector<Mat> pyramidNormals;
-    vector<Mat> pyramidNormalsMask;
+    std::vector<Mat> pyramidNormals;
+    std::vector<Mat> pyramidNormalsMask;
   };
 
   /** Base class for computation of odometry.
@@ -492,8 +492,8 @@ namespace cv
      *                              if they have gradient magnitude less than minGradientMagnitudes[level].
      */
     RgbdOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
-                 float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), const vector<int>& iterCounts = vector<int>(),
-                 const vector<float>& minGradientMagnitudes = vector<float>(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
+                 float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), const std::vector<int>& iterCounts = std::vector<int>(),
+                 const std::vector<float>& minGradientMagnitudes = std::vector<float>(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
                  int transformType = RIGID_BODY_MOTION);
 
     virtual Size
@@ -543,7 +543,7 @@ namespace cv
      */
     ICPOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
                 float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
-                const vector<int>& iterCounts = vector<int>(), int transformType = RIGID_BODY_MOTION);
+                const std::vector<int>& iterCounts = std::vector<int>(), int transformType = RIGID_BODY_MOTION);
 
     virtual Size
     prepareFrameCache(Ptr<OdometryFrame>& frame, int cacheType) const;
@@ -595,8 +595,8 @@ namespace cv
      */
     RgbdICPOdometry(const Mat& cameraMatrix, float minDepth = DEFAULT_MIN_DEPTH(), float maxDepth = DEFAULT_MAX_DEPTH(),
                     float maxDepthDiff = DEFAULT_MAX_DEPTH_DIFF(), float maxPointsPart = DEFAULT_MAX_POINTS_PART(),
-                    const vector<int>& iterCounts = vector<int>(),
-                    const vector<float>& minGradientMagnitudes = vector<float>(),
+                    const std::vector<int>& iterCounts = std::vector<int>(),
+                    const std::vector<float>& minGradientMagnitudes = std::vector<float>(),
                     int transformType = RIGID_BODY_MOTION);
 
     virtual Size

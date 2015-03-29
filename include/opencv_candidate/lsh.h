@@ -37,6 +37,8 @@
 #define LSH_HPP_
 
 #include <algorithm>
+#include <limits>
+
 #include <stdint.h>
 
 #include <opencv2/features2d/features2d.hpp>
