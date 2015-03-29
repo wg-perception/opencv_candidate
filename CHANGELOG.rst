@@ -1,3 +1,13 @@
+Forthcoming
+-----------
+* get features2d to compile with OpenCV3
+* do not compile RGBD for OpenCV3 as there should be an opencv_contrib module anyway
+* remove Python bindings of data matrix
+* remove LSH as it is now upstream
+* get datamatrix to compile with OpenCV3
+* Updating namespaces
+* Contributors: Vincent Rabaud, edgarriba
+
 0.2.3 (2014-07-20)
 ------------------
 * no need for CMake hacks (plus, cholmod is not needed anymore)
