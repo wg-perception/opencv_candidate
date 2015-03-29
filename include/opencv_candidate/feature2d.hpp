@@ -37,6 +37,7 @@
 #define FEATURE2D_HPP_
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/core/types_c.h>
 #include <opencv2/features2d/features2d.hpp>
 
 namespace feature2d
