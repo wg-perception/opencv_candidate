@@ -110,7 +110,11 @@ int AffineAdaptedFeature2D::descriptorType() const
 void AffineAdaptedFeature2D::detectAndComputeImpl(const Mat& image, const Mat& mask, vector<KeyPoint>& keypoints, Mat& descriptors) const
 {
     if(feature2d)
+#ifdef CV_VERSION_EPOCH
         (*feature2d)(image, mask, keypoints, descriptors);
+#else
+        feature2d->detectAndCompute(image, mask, keypoints, descriptors);
+#endif
     else
     {
         CV_Assert(featureDetector);
