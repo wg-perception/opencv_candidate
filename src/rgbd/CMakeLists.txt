@@ -3,6 +3,9 @@
 #ocv_define_module(rgbd)
 
 find_package(OpenCV REQUIRED)
+if (OpenCV_VERSION VERSION_EQUAL "3")
+  return()
+endif()
 
 add_library(opencv_rgbd src/normal.cpp
                         src/depth_to_3d.cpp
