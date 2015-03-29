@@ -1,6 +1,6 @@
 <package>
   <name>opencv_candidate</name>
-  <version>0.2.3</version>
+  <version>0.2.4</version>
   <description>Experimental OpenCV functions</description>
   <author email="erublee@willowgarage.com">Ethan Rublee</author>
   <author email="vrabud@willowgarage.com">Vincent Rabaud</author>

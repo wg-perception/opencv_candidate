@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.4 (2015-03-29)
+------------------
 * get features2d to compile with OpenCV3
 * do not compile RGBD for OpenCV3 as there should be an opencv_contrib module anyway
 * remove Python bindings of data matrix
