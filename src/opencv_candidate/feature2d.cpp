@@ -220,12 +220,20 @@ void AffineAdaptedFeature2D::operator()(InputArray _image, InputArray _mask,
 
 void AffineAdaptedFeature2D::computeImpl(const Mat& /*image*/, vector<KeyPoint>& /*keypoints*/, Mat& /*descriptors*/) const
 {
+#ifdef CV_VERSION_EPOCH
     CV_Error(CV_StsNotImplemented, "Not implemented method because it's not efficient to split feature detection and description extraction here\n");
+#else
+    CV_Error(cv::Error::StsNotImplemented, "Not implemented method because it's not efficient to split feature detection and description extraction here\n");
+#endif
 }
 
 void AffineAdaptedFeature2D::detectImpl(const Mat& /*image*/, vector<KeyPoint>& /*keypoints*/, const Mat& /*mask*/) const
 {
+#ifdef CV_VERSION_EPOCH
     CV_Error(CV_StsNotImplemented, "Not implemented method because it's not efficient to split feature detection and description extraction here\n");
+#else
+    CV_Error(cv::Error::StsNotImplemented, "Not implemented method because it's not efficient to split feature detection and description extraction here\n");
+#endif
 }
 
 }
