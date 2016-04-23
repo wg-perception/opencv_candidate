@@ -16,8 +16,13 @@ if (libg2o_FOUND)
   set(EXTRA_DEPENDS libg2o)
   set(EXTRA_LIBRARIES opencv_candidate_reconst3d)
 endif()
+
+if(OpenCV_VERSION VERSION_LESS "3.0")
+set(RGB_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/rgbd/include)
+endif()
+
 catkin_package(DEPENDS OpenCV ${EXTRA_DEPENDS}
-               INCLUDE_DIRS include
+               INCLUDE_DIRS include ${RGB_INCLUDE_DIRS}
                LIBRARIES opencv_candidate
                          ${OPENCV_CREATIVE}
                          opencv_rgbd

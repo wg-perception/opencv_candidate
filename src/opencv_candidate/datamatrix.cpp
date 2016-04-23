@@ -1,9 +1,11 @@
 #include <opencv_candidate/datamatrix.hpp>
 
 #include <opencv2/imgproc/imgproc.hpp>
+#if CV_MAJOE_VERSION == 2
 #include <opencv2/legacy/compat.hpp>
-#include <opencv2/imgproc/imgproc_c.h>
 #include <opencv2/core/internal.hpp>
+#endif
+#include <opencv2/imgproc/imgproc_c.h>
 
 #if CV_SSE2
 #include <xmmintrin.h>
