@@ -1,3 +1,11 @@
+Forthcoming
+-----------
+* fixes for Kinetic
+* do not compile RGBD for OpenCV3 (as it is in there)
+* proper error handling in OpenCV3
+  fixes `#5 <https://github.com/wg-perception/opencv_candidate/issues/5>`_
+* Contributors: Vincent Rabaud
+
 0.2.4 (2015-03-29)
 ------------------
 * get features2d to compile with OpenCV3
