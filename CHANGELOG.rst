@@ -1,5 +1,5 @@
-Forthcoming
------------
+0.2.5 (2016-04-23)
+------------------
 * fixes for Kinetic
 * do not compile RGBD for OpenCV3 (as it is in there)
 * proper error handling in OpenCV3
