@@ -1,7 +1,7 @@
 #include <opencv_candidate/datamatrix.hpp>
 
 #include <opencv2/imgproc/imgproc.hpp>
-#if CV_MAJOE_VERSION == 2
+#if CV_MAJOR_VERSION == 2
 #include <opencv2/legacy/compat.hpp>
 #include <opencv2/core/internal.hpp>
 #endif
